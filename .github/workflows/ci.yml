@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: khmercart
+          POSTGRES_PASSWORD: khmercart
+          POSTGRES_USER: khmercart
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U khmercart -d khmercart"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_VERSION: "20"
+      DATABASE_URL: postgresql://khmercart:khmercart@127.0.0.1:5432/khmercart
+      REDIS_URL: redis://127.0.0.1:6379
+      SUPPORTED_CURRENCIES: KHR,USD
+      DEFAULT_LOCALE: en
+      SUPPORTED_LOCALES: en,km
+      AUTH_JWT_SECRET: ci-auth-secret
+      OTP_PROVIDER: DEV_STUB
+      AUTH_OTP_TTL_SECONDS: "300"
+      AUTH_OTP_REQUEST_LIMIT: "5"
+      AUTH_OTP_VERIFY_LIMIT: "5"
+      AUTH_OTP_RATE_LIMIT_WINDOW_SECONDS: "300"
+      AUTH_SESSION_TTL_SECONDS: "604800"
+      KYC_DOCUMENT_TYPES: GOVERNMENT_ID,PASSPORT,BUSINESS_LICENSE
+      S3_ENDPOINT: http://s3.localtest.me:9000
+      S3_BUCKET: khmercart-ci
+      S3_KEY: test-key
+      S3_SECRET: test-secret
+      S3_REGION: us-east-1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply database migrations
+        run: pnpm db:migrate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
