@@ -10,7 +10,7 @@
     "pg": "latest"
   },
   "devDependencies": {
-    "@types/pg": "latest"
+    "@types/pg": "2.11.2"
   },
   "exports": {
     ".": "./src/index.ts",
