@@ -10,9 +10,9 @@ import {
   OrderState,
   Prisma,
   ShipmentEventSource,
-  ShipmentStatus,
   type Currency
 } from "@prisma/client";
+import type { ShipmentStatus } from "@prisma/client";
 import { transitionOrderInTransaction } from "./orders";
 import { prisma } from "./prisma";
 
@@ -73,6 +73,10 @@ type SellerShipmentOrderRecord = Prisma.OrderGetPayload<{
 type BuyerShipmentOrderRecord = Prisma.OrderGetPayload<{
   include: typeof buyerOrderTrackingInclude;
 }>;
+
+type SellerShipmentRecord = NonNullable<SellerShipmentOrderRecord["shipment"]>;
+type BuyerShipmentRecord = NonNullable<BuyerShipmentOrderRecord["shipment"]>;
+type ShipmentEventRecord = SellerShipmentRecord["events"][number];
 
 export class ShippingServiceError extends Error {
   code: string;
@@ -159,7 +163,7 @@ function serializeDate(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
 
-function mapShipmentTimelineEvent(event: SellerShipmentOrderRecord["shipment"]["events"][number]): ShipmentTimelineEvent {
+function mapShipmentTimelineEvent(event: ShipmentEventRecord): ShipmentTimelineEvent {
   return {
     actorName: event.actorUser?.fullName ?? null,
     id: event.id,
@@ -171,7 +175,7 @@ function mapShipmentTimelineEvent(event: SellerShipmentOrderRecord["shipment"]["
 }
 
 function mapShipmentSummary(
-  shipment: SellerShipmentOrderRecord["shipment"] | BuyerShipmentOrderRecord["shipment"]
+  shipment: SellerShipmentRecord | BuyerShipmentRecord | null
 ): ShipmentSummary | null {
   if (!shipment) {
     return null;

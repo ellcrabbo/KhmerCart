@@ -501,22 +501,22 @@ model OrderEvent {
 }
 
 model Shipment {
-  id             String         @id @default(cuid())
-  orderId        String         @unique
-  sellerId       String
-  status         ShipmentStatus @default(PENDING)
-  carrier        String?
-  trackingNumber String?
-  trackingUrl    String?
-  providerShipmentId String?    @unique
-  shippedAt      DateTime?
-  deliveredAt    DateTime?
-  metadata       Json?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  seller         Seller         @relation(fields: [sellerId], references: [id], onDelete: Restrict)
-  events         ShipmentEvent[]
+  id                 String          @id @default(cuid())
+  orderId            String          @unique
+  sellerId           String
+  status             ShipmentStatus  @default(PENDING)
+  carrier            String?
+  trackingNumber     String?
+  trackingUrl        String?
+  providerShipmentId String?         @unique
+  shippedAt          DateTime?
+  deliveredAt        DateTime?
+  metadata           Json?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  order              Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  seller             Seller          @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  events             ShipmentEvent[]
 
   @@index([sellerId, status])
 }

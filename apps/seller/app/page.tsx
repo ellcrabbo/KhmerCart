@@ -1,5 +1,9 @@
 import { readAuthConfig, requireRoleFromHeaders } from "@khmercart/core/auth";
-import { getSellerCatalogData, getSellerDashboardData } from "@khmercart/db";
+import {
+  getSellerCatalogData,
+  getSellerDashboardData,
+  getSellerShippingQueueData
+} from "@khmercart/db";
 import { headers } from "next/headers";
 import { AppShell } from "@khmercart/ui";
 import { SellerStudio } from "./seller-studio";
@@ -11,9 +15,10 @@ export default async function SellerPage() {
     readAuthConfig(process.env).jwtSecret,
     "SELLER"
   );
-  const [dashboard, catalog] = await Promise.all([
+  const [dashboard, catalog, shipping] = await Promise.all([
     getSellerDashboardData(session.user.id),
-    getSellerCatalogData(session.user.id)
+    getSellerCatalogData(session.user.id),
+    getSellerShippingQueueData(session.user.id)
   ]);
 
   return (
@@ -24,10 +29,17 @@ export default async function SellerPage() {
           dashboard.seller.kycStatus,
           dashboard.documents.map((document) => document.id).join(","),
           dashboard.seller.kycNotes,
-          catalog.products.map((product) => `${product.id}:${product.updatedAt}`).join(",")
+          catalog.products.map((product) => `${product.id}:${product.updatedAt}`).join(","),
+          shipping.orders
+            .map(
+              (order) =>
+                `${order.orderId}:${order.state}:${order.shipment?.status ?? "NONE"}:${order.shipment?.updates.length ?? 0}`
+            )
+            .join(",")
         ].join(":")}
         initialCatalog={catalog}
         initialData={dashboard}
+        initialShipping={shipping}
       />
     </AppShell>
   );

@@ -26,13 +26,28 @@ type BuyerDictionary = {
   loading: string;
   localeLabel: string;
   notFound: string;
+  orderNumber: string;
+  orderState: string;
+  orderTotal: string;
+  placedAt: string;
   priceFrom: string;
   returnPolicy: string;
   seller: string;
   sellerAddress: string;
   stockUnits: string;
   storefrontNote: string;
+  timelineEmpty: string;
+  trackingAccessDenied: string;
+  trackingCarrier: string;
+  trackingLink: string;
+  trackingNumber: string;
+  trackingPending: string;
+  trackingSubtitle: string;
+  trackingTimeline: string;
+  trackingTitle: string;
+  trackingUpdatedBy: string;
   variantLabel: string;
+  viewTracking: string;
 };
 
 const dictionaries: Record<BuyerLocale, BuyerDictionary> = {
@@ -61,13 +76,28 @@ const dictionaries: Record<BuyerLocale, BuyerDictionary> = {
     loading: "Loading...",
     localeLabel: "Language",
     notFound: "Product not found.",
+    orderNumber: "Order number",
+    orderState: "Order state",
+    orderTotal: "Order total",
+    placedAt: "Placed at",
     priceFrom: "From",
     returnPolicy: "Return policy",
     seller: "Seller",
     sellerAddress: "Seller address",
     stockUnits: "units",
     storefrontNote: "Buyer-facing discovery with mobile-ready browsing and disclosure-first product pages.",
-    variantLabel: "Variants"
+    timelineEmpty: "Tracking updates will appear once the seller or courier records movement.",
+    trackingAccessDenied: "This order is unavailable for the current buyer session.",
+    trackingCarrier: "Carrier",
+    trackingLink: "Tracking link",
+    trackingNumber: "Tracking number",
+    trackingPending: "Pending",
+    trackingSubtitle: "Follow carrier handoff, movement, and delivery updates for your order.",
+    trackingTimeline: "Tracking timeline",
+    trackingTitle: "Order tracking",
+    trackingUpdatedBy: "Updated by",
+    variantLabel: "Variants",
+    viewTracking: "View tracking"
   },
   km: {
     allCategories: "ប្រភេទទាំងអស់",
@@ -94,13 +124,28 @@ const dictionaries: Record<BuyerLocale, BuyerDictionary> = {
     loading: "កំពុងទាញ...",
     localeLabel: "ភាសា",
     notFound: "រកមិនឃើញទំនិញទេ។",
+    orderNumber: "លេខបញ្ជាទិញ",
+    orderState: "ស្ថានភាពបញ្ជាទិញ",
+    orderTotal: "សរុបបញ្ជាទិញ",
+    placedAt: "បានបញ្ជាទិញនៅ",
     priceFrom: "ចាប់ពី",
     returnPolicy: "គោលការណ៍ត្រឡប់ទំនិញ",
     seller: "អ្នកលក់",
     sellerAddress: "អាសយដ្ឋានអ្នកលក់",
     stockUnits: "ឯកតា",
     storefrontNote: "ផ្ទាំង buyer ដែលផ្តោតលើការរកមើលតាមទូរស័ព្ទ និងការបង្ហាញព័ត៌មានសំខាន់ៗជាមុន។",
-    variantLabel: "វ៉ារ្យ៉ង់"
+    timelineEmpty: "ព័ត៌មានតាមដាននឹងបង្ហាញនៅពេលអ្នកលក់ ឬក្រុមហ៊ុនដឹកជញ្ជូនកត់ត្រាការផ្លាស់ទី។",
+    trackingAccessDenied: "មិនអាចបង្ហាញបញ្ជាទិញនេះសម្រាប់ session អ្នកទិញបច្ចុប្បន្នបានទេ។",
+    trackingCarrier: "ក្រុមហ៊ុនដឹកជញ្ជូន",
+    trackingLink: "តំណភ្ជាប់តាមដាន",
+    trackingNumber: "លេខតាមដាន",
+    trackingPending: "កំពុងរង់ចាំ",
+    trackingSubtitle: "តាមដានការប្រគល់ឱ្យក្រុមហ៊ុនដឹកជញ្ជូន ការផ្លាស់ទី និងការដឹកដល់សម្រាប់បញ្ជាទិញរបស់អ្នក។",
+    trackingTimeline: "បញ្ជីព្រឹត្តិការណ៍តាមដាន",
+    trackingTitle: "តាមដានបញ្ជាទិញ",
+    trackingUpdatedBy: "បានកែប្រែដោយ",
+    variantLabel: "វ៉ារ្យ៉ង់",
+    viewTracking: "មើលការតាមដាន"
   }
 };
 

@@ -1,14 +1,20 @@
 "use client";
 
-import type { SellerCatalogData, SellerDashboardData } from "@khmercart/db";
+import type {
+  SellerCatalogData,
+  SellerDashboardData,
+  SellerShippingQueueData
+} from "@khmercart/db";
 import { formatKycStatus } from "@khmercart/core";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ProductCatalog } from "./product-catalog";
+import { ShippingDesk } from "./shipping-desk";
 
 type SellerStudioProps = {
   initialCatalog: SellerCatalogData;
   initialData: SellerDashboardData;
+  initialShipping: SellerShippingQueueData;
 };
 
 async function readErrorMessage(response: Response): Promise<string> {
@@ -21,7 +27,11 @@ async function readErrorMessage(response: Response): Promise<string> {
   }
 }
 
-export function SellerStudio({ initialCatalog, initialData }: SellerStudioProps) {
+export function SellerStudio({
+  initialCatalog,
+  initialData,
+  initialShipping
+}: SellerStudioProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
@@ -394,6 +404,8 @@ export function SellerStudio({ initialCatalog, initialData }: SellerStudioProps)
         </article>
 
         <div className="grid gap-6">
+          <ShippingDesk initialShipping={initialShipping} />
+
           <article className="rounded-[1.75rem] border border-black/10 bg-white/85 p-6 shadow-[0_20px_50px_rgba(16,24,40,0.08)]">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
