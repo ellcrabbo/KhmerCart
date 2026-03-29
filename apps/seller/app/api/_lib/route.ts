@@ -1,10 +1,14 @@
 import { AuthError } from "@khmercart/core/auth";
-import { SellerServiceError } from "@khmercart/db";
+import { SellerServiceError, ShippingServiceError } from "@khmercart/db";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 export function jsonErrorResponse(error: unknown): NextResponse {
-  if (error instanceof AuthError || error instanceof SellerServiceError) {
+  if (
+    error instanceof AuthError ||
+    error instanceof SellerServiceError ||
+    error instanceof ShippingServiceError
+  ) {
     return NextResponse.json(
       {
         error: error.code,

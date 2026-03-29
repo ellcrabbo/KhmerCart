@@ -18,6 +18,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",
+    "payments:reconcile": "tsx scripts/reconcile-payments.ts",
     "test": "vitest run",
     "typecheck": "turbo run typecheck"
   },

@@ -2,6 +2,21 @@ import { AuthError, readAuthConfig } from "@khmercart/core/auth";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+function isApiErrorLike(
+  error: unknown
+): error is { code: string; message: string; status: number } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    "message" in error &&
+    "status" in error &&
+    typeof error.code === "string" &&
+    typeof error.message === "string" &&
+    typeof error.status === "number"
+  );
+}
+
 export function jsonErrorResponse(error: unknown): NextResponse {
   if (error instanceof AuthError) {
     const response = NextResponse.json(
@@ -17,6 +32,16 @@ export function jsonErrorResponse(error: unknown): NextResponse {
     }
 
     return response;
+  }
+
+  if (isApiErrorLike(error)) {
+    return NextResponse.json(
+      {
+        error: error.code,
+        message: error.message
+      },
+      { status: error.status }
+    );
   }
 
   console.error(error);

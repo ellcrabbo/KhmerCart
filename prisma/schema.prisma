@@ -47,12 +47,40 @@ enum ProductModerationStatus {
   REJECTED
 }
 
+enum PaymentMethod {
+  COD
+  KHQR
+  PAYWAY
+  TOANCHET
+  WING
+}
+
+enum PaymentProvider {
+  COD
+  BAKONG
+  PAYWAY
+  TOANCHET
+  WING
+}
+
+enum PaymentStatus {
+  NOT_REQUIRED
+  PENDING
+  PROCESSING
+  AUTHORIZED
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
 enum OrderState {
   CREATED
   PAYMENT_PENDING
   PAYMENT_CONFIRMED
   SELLER_CONFIRMED
   PACKED
+  HANDED_TO_CARRIER
   IN_TRANSIT
   DELIVERED
   COMPLETED
@@ -66,6 +94,7 @@ enum OrderEventType {
   PAYMENT_CAPTURED
   SELLER_CONFIRMED
   PACKED
+  HANDED_TO_CARRIER
   SHIPPED
   DELIVERED
   CANCELLED
@@ -76,10 +105,17 @@ enum OrderEventType {
 enum ShipmentStatus {
   PENDING
   LABEL_CREATED
+  HANDED_TO_CARRIER
   IN_TRANSIT
   DELIVERED
   RETURNED
   FAILED
+}
+
+enum ShipmentEventSource {
+  MANUAL
+  PROVIDER
+  SYSTEM
 }
 
 enum LedgerAccountType {
@@ -104,20 +140,23 @@ enum PayoutBatchStatus {
 }
 
 model User {
-  id              String               @id @default(cuid())
-  email           String?              @unique
-  phone           String?              @unique
+  id              String                @id @default(cuid())
+  email           String?               @unique
+  phone           String?               @unique
   fullName        String
   passwordHash    String?
-  isActive        Boolean              @default(true)
+  isActive        Boolean               @default(true)
   lastLoginAt     DateTime?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
   sellerProfile   Seller?
+  cart            Cart?
   roleAssignments UserRoleAssignment[]
-  buyerOrders     Order[]              @relation("BuyerOrders")
-  orderEvents     OrderEvent[]         @relation("OrderEventActor")
-  auditLogs       AuditLog[]           @relation("AuditLogActor")
+  buyerOrders     Order[]               @relation("BuyerOrders")
+  orderEvents     OrderEvent[]          @relation("OrderEventActor")
+  shipmentEvents  ShipmentEvent[]       @relation("ShipmentEventActor")
+  auditLogs       AuditLog[]            @relation("AuditLogActor")
+  checkoutKeys    CheckoutIdempotency[]
 }
 
 model OtpChallenge {
@@ -158,78 +197,79 @@ model UserRoleAssignment {
 }
 
 model Seller {
-  id               String          @id @default(cuid())
-  userId           String          @unique
-  slug             String          @unique
-  displayName      String
-  legalName        String?
+  id                  String           @id @default(cuid())
+  userId              String           @unique
+  slug                String           @unique
+  displayName         String
+  legalName           String?
   businessDescription String?
-  supportEmail     String?
-  supportPhone     String?
-  defaultCurrency  Currency        @default(KHR)
-  payoutBankName   String?
-  payoutAccountName String?
+  supportEmail        String?
+  supportPhone        String?
+  defaultCurrency     Currency         @default(KHR)
+  payoutBankName      String?
+  payoutAccountName   String?
   payoutAccountNumber String?
   payoutRoutingNumber String?
-  kycStatus        KycStatus       @default(PENDING)
-  kycReference     String?
-  kycSubmittedAt   DateTime?
-  kycApprovedAt    DateTime?
-  kycRejectedAt    DateTime?
-  kycNotes         String?
-  isActive         Boolean         @default(true)
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  products         Product[]
-  documents        SellerDocument[]
-  inventories      Inventory[]
-  orders           Order[]
-  shipments        Shipment[]
-  ledgerAccounts   LedgerAccount[]
-  payoutBatches    PayoutBatch[]
+  kycStatus           KycStatus        @default(PENDING)
+  kycReference        String?
+  kycSubmittedAt      DateTime?
+  kycApprovedAt       DateTime?
+  kycRejectedAt       DateTime?
+  kycNotes            String?
+  isActive            Boolean          @default(true)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products            Product[]
+  documents           SellerDocument[]
+  inventories         Inventory[]
+  orders              Order[]
+  shipments           Shipment[]
+  ledgerAccounts      LedgerAccount[]
+  payoutBatches       PayoutBatch[]
 
   @@index([kycStatus])
 }
 
 model SellerDocument {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   sellerId    String
   type        String
   fileName    String
   contentType String
-  s3Key       String   @unique
+  s3Key       String    @unique
   sizeBytes   Int?
   uploadedAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  seller      Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  seller      Seller    @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   @@index([sellerId, createdAt])
   @@index([sellerId, type])
 }
 
 model Product {
-  id                String                  @id @default(cuid())
-  sellerId          String
-  name              String
-  slug              String
-  description       String?
-  category          String?
-  sellerContact     String?
-  sellerAddress     String?
-  returnPolicy      String?
-  status            ProductStatus           @default(DRAFT)
-  moderationStatus  ProductModerationStatus @default(PENDING)
-  moderationNotes   String?
-  publishedAt       DateTime?
-  defaultCurrency   Currency                @default(KHR)
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
-  seller            Seller                  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  images            ProductImage[]
-  variants          ProductVariant[]
-  orderItems        OrderItem[]
+  id               String                  @id @default(cuid())
+  sellerId         String
+  name             String
+  slug             String
+  description      String?
+  category         String?
+  sellerContact    String?
+  sellerAddress    String?
+  returnPolicy     String?
+  status           ProductStatus           @default(DRAFT)
+  moderationStatus ProductModerationStatus @default(PENDING)
+  moderationNotes  String?
+  publishedAt      DateTime?
+  defaultCurrency  Currency                @default(KHR)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  seller           Seller                  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  images           ProductImage[]
+  variants         ProductVariant[]
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
 
   @@unique([sellerId, slug])
   @@index([sellerId, status])
@@ -237,23 +277,24 @@ model Product {
 }
 
 model ProductVariant {
-  id                   String      @id @default(cuid())
-  productId            String
-  sku                  String      @unique
-  name                 String
-  currency             Currency?
-  priceMinor           Int?
-  compareAtPriceMinor  Int?
-  attributes           Json?
-  weightGrams          Int?
-  isActive             Boolean     @default(true)
-  isDefault            Boolean     @default(false)
-  position             Int         @default(0)
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @updatedAt
-  product              Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  inventory            Inventory?
-  orderItems           OrderItem[]
+  id                  String      @id @default(cuid())
+  productId           String
+  sku                 String      @unique
+  name                String
+  currency            Currency?
+  priceMinor          Int?
+  compareAtPriceMinor Int?
+  attributes          Json?
+  weightGrams         Int?
+  isActive            Boolean     @default(true)
+  isDefault           Boolean     @default(false)
+  position            Int         @default(0)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  product             Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory           Inventory?
+  cartItems           CartItem[]
+  orderItems          OrderItem[]
 
   @@index([productId, isActive])
   @@index([productId, position])
@@ -276,49 +317,150 @@ model Inventory {
 }
 
 model ProductImage {
-  id         String   @id @default(cuid())
-  productId  String
-  url        String
-  altText    String?
-  position   Int      @default(0)
-  isPrimary  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  productId String
+  url       String
+  altText   String?
+  position  Int      @default(0)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId, position])
 }
 
+model Cart {
+  id        String     @id @default(cuid())
+  buyerId   String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  buyer     User       @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+}
+
+model CartItem {
+  id        String         @id @default(cuid())
+  cartId    String
+  productId String
+  variantId String
+  quantity  Int
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, variantId])
+  @@index([cartId])
+  @@index([variantId])
+}
+
 model Order {
-  id              String        @id @default(cuid())
-  orderNumber     String        @unique
-  buyerId         String
-  sellerId        String
-  state           OrderState    @default(CREATED)
-  currency        Currency
-  subtotalMinor   Int
-  shippingMinor   Int           @default(0)
-  taxMinor        Int           @default(0)
-  discountMinor   Int           @default(0)
-  totalMinor      Int
-  placedAt        DateTime?
-  paidAt          DateTime?
-  completedAt     DateTime?
-  cancelledAt     DateTime?
-  shippingAddress Json?
-  billingAddress  Json?
-  notes           String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  buyer           User          @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
-  seller          Seller        @relation(fields: [sellerId], references: [id], onDelete: Restrict)
-  items           OrderItem[]
-  events          OrderEvent[]
-  shipment        Shipment?
-  ledgerEntries   LedgerEntry[]
+  id               String                @id @default(cuid())
+  orderNumber      String                @unique
+  buyerId          String
+  sellerId         String
+  paymentMethod    PaymentMethod         @default(COD)
+  paymentReference String?
+  paymentMetadata  Json?
+  state            OrderState            @default(CREATED)
+  currency         Currency
+  subtotalMinor    Int
+  shippingMinor    Int                   @default(0)
+  taxMinor         Int                   @default(0)
+  discountMinor    Int                   @default(0)
+  totalMinor       Int
+  placedAt         DateTime?
+  paidAt           DateTime?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  shippingAddress  Json?
+  billingAddress   Json?
+  notes            String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  buyer            User                  @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+  seller           Seller                @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  items            OrderItem[]
+  events           OrderEvent[]
+  payments         Payment[]
+  paymentEvents    PaymentEvent[]
+  shipment         Shipment?
+  ledgerEntries    LedgerEntry[]
+  checkoutKeys     CheckoutIdempotency[]
 
   @@index([buyerId, createdAt])
   @@index([sellerId, state])
+}
+
+model CheckoutIdempotency {
+  id             String   @id @default(cuid())
+  buyerId        String
+  idempotencyKey String
+  requestHash    String
+  orderId        String?
+  responseData   Json?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  buyer          User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([buyerId, idempotencyKey])
+  @@index([expiresAt])
+}
+
+model Payment {
+  id                String          @id @default(cuid())
+  orderId           String
+  provider          PaymentProvider
+  method            PaymentMethod
+  status            PaymentStatus
+  amountMinor       Int
+  currency          Currency
+  providerPaymentId String?         @unique
+  providerReference String?
+  checkoutUrl       String?
+  qrPayload         String?
+  instructions      String?
+  metadata          Json?
+  capturedAt        DateTime?
+  failedAt          DateTime?
+  lastReconciledAt  DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  order             Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  events            PaymentEvent[]
+
+  @@index([orderId, createdAt])
+  @@index([provider, status])
+  @@index([providerReference])
+}
+
+model PaymentEvent {
+  id                String          @id @default(cuid())
+  paymentId         String?
+  orderId           String?
+  provider          PaymentProvider
+  providerEventId   String?
+  idempotencyKey    String?
+  eventType         String
+  providerStatus    String
+  payloadHash       String
+  headersHash       String?
+  signatureVerified Boolean         @default(false)
+  metadata          Json?
+  processedAt       DateTime?
+  receivedAt        DateTime        @default(now())
+  payment           Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  order             Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, payloadHash])
+  @@index([provider, providerEventId])
+  @@index([paymentId, receivedAt])
+  @@index([orderId, receivedAt])
+  @@index([idempotencyKey])
 }
 
 model OrderItem {
@@ -366,6 +508,7 @@ model Shipment {
   carrier        String?
   trackingNumber String?
   trackingUrl    String?
+  providerShipmentId String?    @unique
   shippedAt      DateTime?
   deliveredAt    DateTime?
   metadata       Json?
@@ -373,42 +516,62 @@ model Shipment {
   updatedAt      DateTime       @updatedAt
   order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   seller         Seller         @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  events         ShipmentEvent[]
 
   @@index([sellerId, status])
 }
 
+model ShipmentEvent {
+  id              String              @id @default(cuid())
+  shipmentId      String
+  actorUserId     String?
+  source          ShipmentEventSource @default(MANUAL)
+  status          ShipmentStatus
+  message         String?
+  providerEventId String?
+  metadata        Json?
+  occurredAt      DateTime            @default(now())
+  createdAt       DateTime            @default(now())
+  shipment        Shipment            @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  actorUser       User?               @relation("ShipmentEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([shipmentId, occurredAt])
+  @@index([actorUserId, createdAt])
+  @@index([providerEventId])
+}
+
 model LedgerAccount {
-  id          String            @id @default(cuid())
-  sellerId    String?
-  code        String            @unique
-  name        String
-  type        LedgerAccountType
-  currency    Currency
-  isSystem    Boolean           @default(false)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  seller      Seller?           @relation(fields: [sellerId], references: [id], onDelete: SetNull)
-  entries     LedgerEntry[]
+  id        String            @id @default(cuid())
+  sellerId  String?
+  code      String            @unique
+  name      String
+  type      LedgerAccountType
+  currency  Currency
+  isSystem  Boolean           @default(false)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  seller    Seller?           @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  entries   LedgerEntry[]
 
   @@index([sellerId])
 }
 
 model LedgerEntry {
-  id             String          @id @default(cuid())
-  accountId      String
-  entryGroupKey  String
-  direction      LedgerDirection
-  amountMinor    Int
-  currency       Currency
-  orderId        String?
-  payoutBatchId  String?
-  externalRef    String?
-  memo           String?
-  effectiveAt    DateTime        @default(now())
-  createdAt      DateTime        @default(now())
-  account        LedgerAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  order          Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  payoutBatch    PayoutBatch?    @relation(fields: [payoutBatchId], references: [id], onDelete: SetNull)
+  id            String          @id @default(cuid())
+  accountId     String
+  entryGroupKey String
+  direction     LedgerDirection
+  amountMinor   Int
+  currency      Currency
+  orderId       String?
+  payoutBatchId String?
+  externalRef   String?
+  memo          String?
+  effectiveAt   DateTime        @default(now())
+  createdAt     DateTime        @default(now())
+  account       LedgerAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  order         Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  payoutBatch   PayoutBatch?    @relation(fields: [payoutBatchId], references: [id], onDelete: SetNull)
 
   @@index([accountId, effectiveAt])
   @@index([entryGroupKey])
@@ -417,29 +580,29 @@ model LedgerEntry {
 }
 
 model PayoutBatch {
-  id                String            @id @default(cuid())
-  sellerId          String
-  status            PayoutBatchStatus @default(DRAFT)
-  currency          Currency
-  periodStart       DateTime
-  periodEnd         DateTime
-  grossAmountMinor  Int
-  feeAmountMinor    Int               @default(0)
-  netAmountMinor    Int
-  scheduledFor      DateTime?
-  processedAt       DateTime?
-  reference         String?           @unique
-  notes             String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  seller            Seller            @relation(fields: [sellerId], references: [id], onDelete: Restrict)
-  ledgerEntries     LedgerEntry[]
+  id               String            @id @default(cuid())
+  sellerId         String
+  status           PayoutBatchStatus @default(DRAFT)
+  currency         Currency
+  periodStart      DateTime
+  periodEnd        DateTime
+  grossAmountMinor Int
+  feeAmountMinor   Int               @default(0)
+  netAmountMinor   Int
+  scheduledFor     DateTime?
+  processedAt      DateTime?
+  reference        String?           @unique
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  seller           Seller            @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  ledgerEntries    LedgerEntry[]
 
   @@index([sellerId, status])
 }
 
 model AuditLog {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   actorUserId String?
   entityType  String
   entityId    String
@@ -448,8 +611,8 @@ model AuditLog {
   afterData   Json?
   ipAddress   String?
   userAgent   String?
-  createdAt   DateTime  @default(now())
-  actorUser   User?     @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  actorUser   User?    @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([entityType, entityId, createdAt])
   @@index([actorUserId, createdAt])

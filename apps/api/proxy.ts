@@ -9,6 +9,10 @@ function getRequiredRole(pathname: string) {
     return "ADMIN" as const;
   }
 
+  if (pathname === "/api/checkout" || pathname.startsWith("/api/cart")) {
+    return "BUYER" as const;
+  }
+
   if (pathname.startsWith("/api/seller")) {
     return "SELLER" as const;
   }
@@ -23,7 +27,11 @@ function getRequiredRole(pathname: string) {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (publicPaths.has(pathname) || pathname.startsWith("/api/auth")) {
+  if (
+    publicPaths.has(pathname) ||
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/webhooks/")
+  ) {
     return NextResponse.next();
   }
 

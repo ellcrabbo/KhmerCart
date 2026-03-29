@@ -3,7 +3,9 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./auth": "./src/auth.ts"
+    "./auth": "./src/auth.ts",
+    "./payments": "./src/payments/index.ts",
+    "./shipping": "./src/shipping/index.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
