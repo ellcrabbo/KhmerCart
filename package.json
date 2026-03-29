@@ -1,0 +1,41 @@
+{
+  "name": "khmercart",
+  "packageManager": "pnpm@10.33.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.0.0",
+    "jose": "latest"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy && prisma generate",
+    "db:seed": "tsx prisma/seed.ts",
+    "dev": "turbo run dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "turbo run lint",
+    "test": "vitest run",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react": "latest",
+    "eslint-plugin-react-hooks": "latest",
+    "globals": "latest",
+    "prettier": "latest",
+    "prisma": "^6.0.0",
+    "tsx": "latest",
+    "turbo": "latest",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "latest",
+    "vitest": "latest"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@khmercart/ui",
+  "private": true,
+  "dependencies": {
+    "@khmercart/core": "workspace:*",
+    "react": "latest"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "eslint src --max-warnings 0",
+    "typecheck": "tsc --noEmit"
+  }
+}
