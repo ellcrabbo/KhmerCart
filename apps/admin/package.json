@@ -19,6 +19,7 @@
     "dev": "next dev --port 3003",
     "lint": "eslint . --max-warnings 0",
     "start": "next start --port 3003",
+    "test": "node ../../scripts/run-workspace-tests.mjs @khmercart/admin",
     "typecheck": "tsc --noEmit"
   }
 }

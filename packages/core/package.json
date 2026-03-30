@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "lint": "eslint src --max-warnings 0",
+    "test": "node ../../scripts/run-workspace-tests.mjs @khmercart/core",
     "typecheck": "tsc --noEmit"
   }
 }

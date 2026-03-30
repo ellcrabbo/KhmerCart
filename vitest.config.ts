@@ -19,6 +19,10 @@ export default defineConfig({
       {
         find: /^@khmercart\/db$/,
         replacement: fileURLToPath(new URL("./packages/db/src/index.ts", import.meta.url))
+      },
+      {
+        find: /^next\/server$/,
+        replacement: fileURLToPath(new URL("./tests/shims/next-server.ts", import.meta.url))
       }
     ]
   },

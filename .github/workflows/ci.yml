@@ -83,10 +83,13 @@ jobs:
         run: pnpm db:migrate
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm -r lint
 
       - name: Typecheck
-        run: pnpm typecheck
+        run: pnpm -r typecheck
 
       - name: Test
+        run: pnpm -r test
+
+      - name: Aggregate test suite
         run: pnpm test
