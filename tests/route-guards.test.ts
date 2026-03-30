@@ -5,7 +5,7 @@ import { POST as postDisputeDecision } from "../apps/admin/app/api/disputes/[dis
 import { POST as postProductDecision } from "../apps/admin/app/api/products/[productId]/decision/route";
 import { POST as postSellerDecision } from "../apps/admin/app/api/sellers/[sellerId]/decision/route";
 import { proxy as apiProxy } from "../apps/api/proxy";
-import { NextRequest } from "next/server";
+import { NextRequest } from "./shims/next-server";
 
 const jwtSecret = "test-secret";
 

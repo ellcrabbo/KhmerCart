@@ -1,10 +1,10 @@
 import { SellerServiceError } from "@khmercart/db";
-import { NextRequest } from "next/server";
 import {
   getClientIpAddress,
   jsonErrorResponse,
   readJsonBody
 } from "../apps/seller/app/api/_lib/route";
+import { NextRequest } from "./shims/next-server";
 
 describe("seller route utilities", () => {
   it("reads the first forwarded client IP address", () => {
