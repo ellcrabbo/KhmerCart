@@ -79,7 +79,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Apply database migrations
+      - name: Migrate test database
         run: pnpm db:migrate
 
       - name: Lint

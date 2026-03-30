@@ -1,5 +1,9 @@
 import { issueSessionToken } from "@khmercart/core/auth";
+import { proxy as adminProxy } from "../apps/admin/proxy";
 import { GET as getSellerSession } from "../apps/api/app/api/seller/session/route";
+import { POST as postDisputeDecision } from "../apps/admin/app/api/disputes/[disputeId]/decision/route";
+import { POST as postProductDecision } from "../apps/admin/app/api/products/[productId]/decision/route";
+import { POST as postSellerDecision } from "../apps/admin/app/api/sellers/[sellerId]/decision/route";
 import { proxy as apiProxy } from "../apps/api/proxy";
 import { NextRequest } from "next/server";
 
@@ -73,5 +77,91 @@ describe("route guards", () => {
     expect(response.status).toBe(200);
     expect(payload.user.primaryRole).toBe("SELLER");
     expect(payload.user.roles).toEqual(["SELLER"]);
+  });
+
+  it("returns 403 from the seller approval route for buyer-only sessions", async () => {
+    const token = await createToken(["BUYER"]);
+    const request = new NextRequest("http://localhost:3003/api/sellers/seller_1/decision", {
+      body: JSON.stringify({
+        decision: "APPROVE"
+      }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    });
+
+    const response = await postSellerDecision(request, {
+      params: Promise.resolve({ sellerId: "seller_1" })
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "FORBIDDEN",
+      message: "FORBIDDEN"
+    });
+  });
+
+  it("returns 403 from the admin proxy for buyer-only page requests", async () => {
+    const token = await createToken(["BUYER"]);
+    const request = new NextRequest("http://localhost:3003/approvals", {
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    const response = await adminProxy(request);
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toBe("FORBIDDEN");
+  });
+
+  it("returns 403 from the product moderation route for buyer-only sessions", async () => {
+    const token = await createToken(["BUYER"]);
+    const request = new NextRequest("http://localhost:3003/api/products/product_1/decision", {
+      body: JSON.stringify({
+        decision: "APPROVE"
+      }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    });
+
+    const response = await postProductDecision(request, {
+      params: Promise.resolve({ productId: "product_1" })
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "FORBIDDEN",
+      message: "FORBIDDEN"
+    });
+  });
+
+  it("returns 403 from the dispute decision route for buyer-only sessions", async () => {
+    const token = await createToken(["BUYER"]);
+    const request = new NextRequest("http://localhost:3003/api/disputes/dispute_1/decision", {
+      body: JSON.stringify({
+        status: "UNDER_REVIEW"
+      }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    });
+
+    const response = await postDisputeDecision(request, {
+      params: Promise.resolve({ disputeId: "dispute_1" })
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "FORBIDDEN",
+      message: "FORBIDDEN"
+    });
   });
 });

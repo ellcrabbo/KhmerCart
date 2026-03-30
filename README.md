@@ -41,22 +41,22 @@ prisma/
 
 ## Quick start
 
-1. Install dependencies:
+1. Copy the environment template:
 
    ```bash
-   pnpm install
+   cp .env.example .env.local
    ```
 
-2. Copy the environment template:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-3. Start local infrastructure:
+2. Start local infrastructure:
 
    ```bash
    docker compose up -d
+   ```
+
+3. Install dependencies:
+
+   ```bash
+   pnpm install
    ```
 
 4. Apply database migrations:
@@ -76,6 +76,15 @@ prisma/
    ```bash
    pnpm dev
    ```
+
+Fresh clone validation path:
+
+```bash
+docker compose up -d
+pnpm install
+pnpm db:migrate
+pnpm test
+```
 
 ## Local URLs
 
@@ -100,6 +109,7 @@ pnpm typecheck
 pnpm test
 pnpm format:check
 pnpm db:migrate
+pnpm db:reset
 pnpm db:seed
 ```
 
@@ -114,7 +124,7 @@ pnpm --filter @khmercart/admin dev
 
 ## Environment
 
-The main local configuration lives in [`.env.example`](./.env.example).
+Copy [`.env.example`](./.env.example) to `.env.local` for local development. The helper DB scripts load `.env.local` first and fall back to `.env` if needed.
 
 Important variables:
 
@@ -153,6 +163,39 @@ Seed repeatable fixture data:
 pnpm db:seed
 ```
 
+Reset the local database, re-apply migrations, and re-run seed data:
+
+```bash
+pnpm db:reset
+```
+
+## Migration runbook
+
+Create a new local migration after editing the Prisma schema:
+
+```bash
+pnpm exec prisma migrate dev --name <migration_name>
+```
+
+Deploy committed migrations into the current database:
+
+```bash
+pnpm db:migrate
+```
+
+Verify the result locally with seed and tests:
+
+```bash
+pnpm db:seed
+pnpm test
+```
+
+Rollback guidance:
+
+- Prefer a forward fix migration instead of editing an already-applied migration.
+- For local-only recovery, use `pnpm db:reset`.
+- For shared or production databases, restore from backup or manually revert the SQL change, then mark migration state with `pnpm exec prisma migrate resolve ...` only after the database has been corrected.
+
 ## GitHub Actions
 
 CI is defined in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
@@ -161,10 +204,10 @@ On pushes and pull requests to `main`, it:
 
 - installs dependencies with pnpm
 - boots PostgreSQL and Redis service containers
-- runs Prisma migrations
+- migrates a clean test database
 - runs lint
 - runs typecheck
-- runs tests
+- runs unit and integration tests
 
 ## Current feature areas
 

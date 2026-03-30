@@ -35,6 +35,12 @@ enum KycStatus {
   REJECTED
 }
 
+enum SellerRiskTier {
+  LOW
+  MED
+  HIGH
+}
+
 enum ProductStatus {
   DRAFT
   ACTIVE
@@ -139,6 +145,21 @@ enum PayoutBatchStatus {
   CANCELLED
 }
 
+enum DisputeReason {
+  NOT_RECEIVED
+  DAMAGED
+  NOT_AS_DESCRIBED
+  OTHER
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  REFUND_APPROVED
+  REJECTED
+  CLOSED
+}
+
 model User {
   id              String                @id @default(cuid())
   email           String?               @unique
@@ -210,6 +231,7 @@ model Seller {
   payoutAccountName   String?
   payoutAccountNumber String?
   payoutRoutingNumber String?
+  riskTier            SellerRiskTier   @default(MED)
   kycStatus           KycStatus        @default(PENDING)
   kycReference        String?
   kycSubmittedAt      DateTime?
@@ -227,6 +249,7 @@ model Seller {
   shipments           Shipment[]
   ledgerAccounts      LedgerAccount[]
   payoutBatches       PayoutBatch[]
+  payoutItems         PayoutItem[]
 
   @@index([kycStatus])
 }
@@ -387,7 +410,9 @@ model Order {
   payments         Payment[]
   paymentEvents    PaymentEvent[]
   shipment         Shipment?
+  disputes         Dispute[]
   ledgerEntries    LedgerEntry[]
+  payoutItems      PayoutItem[]
   checkoutKeys     CheckoutIdempotency[]
 
   @@index([buyerId, createdAt])
@@ -572,6 +597,7 @@ model LedgerEntry {
   account       LedgerAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
   order         Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
   payoutBatch   PayoutBatch?    @relation(fields: [payoutBatchId], references: [id], onDelete: SetNull)
+  payoutItems   PayoutItem[]
 
   @@index([accountId, effectiveAt])
   @@index([entryGroupKey])
@@ -597,8 +623,51 @@ model PayoutBatch {
   updatedAt        DateTime          @updatedAt
   seller           Seller            @relation(fields: [sellerId], references: [id], onDelete: Restrict)
   ledgerEntries    LedgerEntry[]
+  items            PayoutItem[]
 
   @@index([sellerId, status])
+}
+
+model PayoutItem {
+  id               String      @id @default(cuid())
+  payoutBatchId    String
+  sellerId         String
+  orderId          String?
+  ledgerEntryId    String      @unique
+  currency         Currency
+  grossAmountMinor Int
+  feeAmountMinor   Int         @default(0)
+  netAmountMinor   Int
+  createdAt        DateTime    @default(now())
+  payoutBatch      PayoutBatch @relation(fields: [payoutBatchId], references: [id], onDelete: Cascade)
+  seller           Seller      @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  order            Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  ledgerEntry      LedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+
+  @@index([payoutBatchId, createdAt])
+  @@index([sellerId, createdAt])
+  @@index([orderId])
+}
+
+model Dispute {
+  id                  String        @id @default(cuid())
+  orderId             String
+  reason              DisputeReason
+  status              DisputeStatus @default(OPEN)
+  buyerMessage        String
+  sellerResponse      String?
+  adminNote           String?
+  resolutionNote      String?
+  requestedRefundMinor Int?
+  resolvedRefundMinor Int?
+  openedAt            DateTime      @default(now())
+  resolvedAt          DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  order               Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status, createdAt])
 }
 
 model AuditLog {
