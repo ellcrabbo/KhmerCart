@@ -10,7 +10,7 @@
     "jose": "^6.2.2"
   },
   "scripts": {
-    "build": "turbo run build",
+    "build": "prisma generate && turbo run build",
     "db:generate": "./scripts/with-local-env.sh prisma generate",
     "db:migrate": "./scripts/with-local-env.sh prisma migrate deploy && ./scripts/with-local-env.sh prisma generate",
     "db:reset": "./scripts/with-local-env.sh prisma migrate reset --force --skip-seed && pnpm db:seed",
@@ -20,6 +20,7 @@
     "format:check": "prettier --check .",
     "lint": "turbo run lint",
     "payments:reconcile": "tsx scripts/reconcile-payments.ts",
+    "postinstall": "prisma generate",
     "test": "vitest run",
     "typecheck": "turbo run typecheck"
   },
