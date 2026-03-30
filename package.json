@@ -6,7 +6,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@prisma/client": "6.19.2",
+    "@prisma/client": "7.6.0",
     "jose": "^6.2.2"
   },
   "scripts": {
