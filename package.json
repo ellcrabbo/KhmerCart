@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
-    "jose": "latest"
+    "jose": "^6.2.2"
   },
   "scripts": {
     "build": "turbo run build",
@@ -41,6 +41,11 @@
     "turbo": "latest",
     "typescript": "^5.9.0",
     "typescript-eslint": "latest",
-    "vitest": "latest"
+    "vitest": "^4.1.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@prisma/config>effect": "3.21.0"
+    }
   }
 }

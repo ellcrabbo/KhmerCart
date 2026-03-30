@@ -7,7 +7,7 @@
     "@khmercart/core": "workspace:*",
     "dotenv": "latest",
     "ioredis": "latest",
-    "pg": "latest"
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@types/pg": "8.20.0"

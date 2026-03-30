@@ -11,7 +11,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "latest",
-    "postcss": "latest",
+    "postcss": "^8.5.8",
     "tailwindcss": "latest"
   },
   "scripts": {
