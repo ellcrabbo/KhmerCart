@@ -35,7 +35,7 @@
     "globals": "latest",
     "next": "latest",
     "prettier": "latest",
-    "prisma": "6.19.2",
+    "prisma": "7.6.0",
     "react": "latest",
     "react-dom": "latest",
     "tsx": "latest",
