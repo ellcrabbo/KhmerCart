@@ -6,7 +6,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@prisma/client": "^6.0.0",
+    "@prisma/client": "6.19.2",
     "jose": "^6.2.2"
   },
   "scripts": {
@@ -35,7 +35,7 @@
     "globals": "latest",
     "next": "latest",
     "prettier": "latest",
-    "prisma": "^6.0.0",
+    "prisma": "6.19.2",
     "react": "latest",
     "react-dom": "latest",
     "tsx": "latest",
