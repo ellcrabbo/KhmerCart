@@ -2,7 +2,7 @@
   "name": "@khmercart/db",
   "private": true,
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.922.0",
+    "@aws-sdk/client-s3": "^3.1020.0",
     "@aws-sdk/s3-request-presigner": "^3.922.0",
     "@khmercart/core": "workspace:*",
     "ioredis": "latest",
