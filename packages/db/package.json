@@ -4,7 +4,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "7.6.0",
     "@aws-sdk/client-s3": "^3.922.0",
-    "@aws-sdk/s3-request-presigner": "^3.922.0",
+    "@aws-sdk/s3-request-presigner": "^3.1022.0",
     "@khmercart/core": "workspace:*",
     "ioredis": "latest",
     "pg": "^8.20.0"
