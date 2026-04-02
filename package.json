@@ -18,6 +18,7 @@
     "dev": "turbo run dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "hygiene": "node ./scripts/check-repo-hygiene.mjs",
     "lint": "turbo run lint",
     "payments:reconcile": "tsx scripts/reconcile-payments.ts",
     "postinstall": "prisma generate",

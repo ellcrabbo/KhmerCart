@@ -82,6 +82,9 @@ jobs:
       - name: Migrate test database
         run: pnpm db:migrate
 
+      - name: Repo hygiene
+        run: pnpm hygiene
+
       - name: Lint
         run: pnpm -r lint
 
