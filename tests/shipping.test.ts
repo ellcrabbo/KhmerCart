@@ -4,7 +4,7 @@ import {
   prisma,
   saveSellerShipment
 } from "@khmercart/db";
-import { UserRole, type OrderState } from "@prisma/client";
+import { UserRole, type OrderState } from "@khmercart/db/prisma-client";
 
 function createUniquePhone(prefix: string, suffix: string) {
   const digits = createHash("sha256")

@@ -11,11 +11,11 @@ import {
   Prisma,
   ProductModerationStatus,
   ProductStatus,
-} from "@prisma/client";
+} from "./prisma-client";
 import { prisma } from "./prisma";
 import { SellerServiceError } from "./seller";
 
-const catalogProductInclude = Prisma.validator<Prisma.ProductInclude>()({
+const catalogProductInclude = {
   images: {
     orderBy: [{ position: "asc" }, { createdAt: "asc" }]
   },
@@ -25,7 +25,7 @@ const catalogProductInclude = Prisma.validator<Prisma.ProductInclude>()({
     },
     orderBy: [{ position: "asc" }, { createdAt: "asc" }]
   }
-});
+} satisfies Prisma.ProductInclude;
 
 type CatalogProductRecord = Prisma.ProductGetPayload<{
   include: typeof catalogProductInclude;

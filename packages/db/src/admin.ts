@@ -4,8 +4,8 @@ import {
   Prisma,
   ProductModerationStatus,
   ProductStatus
-} from "@prisma/client";
-import type { DisputeReason, KycStatus } from "@prisma/client";
+} from "./prisma-client";
+import type { DisputeReason, KycStatus } from "./prisma-client";
 import { prisma } from "./prisma";
 import { SellerServiceError } from "./seller";
 
@@ -160,7 +160,7 @@ function disputeSnapshot(dispute: {
   } satisfies Prisma.InputJsonValue;
 }
 
-const disputeInclude = Prisma.validator<Prisma.DisputeInclude>()({
+const disputeInclude = {
   order: {
     include: {
       buyer: true,
@@ -168,7 +168,7 @@ const disputeInclude = Prisma.validator<Prisma.DisputeInclude>()({
       seller: true
     }
   }
-});
+} satisfies Prisma.DisputeInclude;
 
 type DisputeRecord = Prisma.DisputeGetPayload<{
   include: typeof disputeInclude;

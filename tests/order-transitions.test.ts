@@ -8,7 +8,7 @@ import {
   type OrderLifecycleState,
   type OrderTransitionActor
 } from "@khmercart/core";
-import { UserRole, type OrderState } from "@prisma/client";
+import { UserRole, type OrderState } from "@khmercart/db/prisma-client";
 
 const EXPECTED_TRANSITIONS: Record<OrderLifecycleState, readonly OrderLifecycleState[]> = {
   CANCELLED: [],

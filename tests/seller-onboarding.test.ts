@@ -1,5 +1,5 @@
 import { createSellerProductListing, decideSellerApproval, markSellerDocumentUploaded, prisma, requestSellerDocumentUpload, saveSellerOnboarding } from "@khmercart/db";
-import { Currency, KycStatus, UserRole } from "@prisma/client";
+import { Currency, KycStatus, UserRole } from "@khmercart/db/prisma-client";
 
 async function createUserWithRole(input: {
   email: string;

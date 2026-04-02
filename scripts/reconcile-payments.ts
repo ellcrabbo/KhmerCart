@@ -1,4 +1,4 @@
-import { runPaymentReconciliationJob } from "@khmercart/db";
+import { runPaymentReconciliationJob } from "../packages/db/src/payments.ts";
 
 async function main() {
   const result = await runPaymentReconciliationJob();

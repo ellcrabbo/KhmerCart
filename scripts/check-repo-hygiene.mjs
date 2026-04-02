@@ -19,6 +19,10 @@ const forbiddenPatterns = [
   {
     description: "Turborepo cache output",
     test: (file) => file.includes("/.turbo/")
+  },
+  {
+    description: "Generated Prisma client output",
+    test: (file) => file.startsWith("packages/db/generated/")
   }
 ];
 

@@ -5,7 +5,7 @@ import {
   mutateBuyerCartItem,
   prisma
 } from "@khmercart/db";
-import { ProductModerationStatus, UserRole } from "@prisma/client";
+import { ProductModerationStatus, UserRole } from "@khmercart/db/prisma-client";
 import { POST as paywayWebhookPost } from "../apps/api/app/api/webhooks/payway/route";
 
 function createUniquePhone(prefix: string, suffix: string) {

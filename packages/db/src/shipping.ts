@@ -11,12 +11,12 @@ import {
   Prisma,
   ShipmentEventSource,
   type Currency
-} from "@prisma/client";
-import type { ShipmentStatus } from "@prisma/client";
+} from "./prisma-client";
+import type { ShipmentStatus } from "./prisma-client";
 import { transitionOrderInTransaction } from "./orders";
 import { prisma } from "./prisma";
 
-const sellerShipmentOrderInclude = Prisma.validator<Prisma.OrderInclude>()({
+const sellerShipmentOrderInclude = {
   buyer: {
     select: {
       email: true,
@@ -39,9 +39,9 @@ const sellerShipmentOrderInclude = Prisma.validator<Prisma.OrderInclude>()({
       }
     }
   }
-});
+} satisfies Prisma.OrderInclude;
 
-const buyerOrderTrackingInclude = Prisma.validator<Prisma.OrderInclude>()({
+const buyerOrderTrackingInclude = {
   seller: {
     select: {
       displayName: true,
@@ -64,7 +64,7 @@ const buyerOrderTrackingInclude = Prisma.validator<Prisma.OrderInclude>()({
       }
     }
   }
-});
+} satisfies Prisma.OrderInclude;
 
 type SellerShipmentOrderRecord = Prisma.OrderGetPayload<{
   include: typeof sellerShipmentOrderInclude;

@@ -5,7 +5,7 @@ import {
   updateSellerProduct,
   updateSellerProductVariant
 } from "@khmercart/db";
-import { KycStatus, UserRole } from "@prisma/client";
+import { KycStatus, UserRole } from "@khmercart/db/prisma-client";
 
 async function createSellerFixture(input: {
   kycStatus?: KycStatus;

@@ -7,7 +7,7 @@ import {
   prisma,
   type BuyerCheckoutResult
 } from "@khmercart/db"
-import { ProductModerationStatus, UserRole } from "@prisma/client"
+import { ProductModerationStatus, UserRole } from "@khmercart/db/prisma-client"
 import { POST as checkoutRoutePost } from "../apps/api/app/api/checkout/route"
 
 function createUniquePhone(prefix: string, suffix: string) {

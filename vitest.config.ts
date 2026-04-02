@@ -17,6 +17,10 @@ export default defineConfig({
         replacement: fileURLToPath(new URL("./packages/db/src/auth-store.ts", import.meta.url))
       },
       {
+        find: /^@khmercart\/db\/prisma-client$/,
+        replacement: fileURLToPath(new URL("./packages/db/src/prisma-client.ts", import.meta.url))
+      },
+      {
         find: /^@khmercart\/db$/,
         replacement: fileURLToPath(new URL("./packages/db/src/index.ts", import.meta.url))
       },
@@ -30,6 +34,7 @@ export default defineConfig({
     environment: "node",
     fileParallelism: false,
     globals: true,
-    include: ["tests/**/*.test.ts"]
+    include: ["tests/**/*.test.ts"],
+    setupFiles: ["./tests/setup-env.ts"]
   }
 });

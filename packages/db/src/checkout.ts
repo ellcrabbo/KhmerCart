@@ -19,15 +19,15 @@ import {
   ProductModerationStatus,
   ProductStatus,
   UserRole
-} from "@prisma/client"
-import type { Currency } from "@prisma/client"
+} from "./prisma-client"
+import type { Currency } from "./prisma-client"
 import { createCheckoutPaymentRecord } from "./payments"
 import { appendOrderEventInTransaction } from "./orders"
 import { prisma } from "./prisma"
 
 type DatabaseClient = Prisma.TransactionClient | typeof prisma
 
-const cartItemInclude = Prisma.validator<Prisma.CartItemInclude>()({
+const cartItemInclude = {
   product: {
     include: {
       images: {
@@ -41,9 +41,9 @@ const cartItemInclude = Prisma.validator<Prisma.CartItemInclude>()({
       inventory: true
     }
   }
-})
+} satisfies Prisma.CartItemInclude
 
-const buyableVariantInclude = Prisma.validator<Prisma.ProductVariantInclude>()({
+const buyableVariantInclude = {
   inventory: true,
   product: {
     include: {
@@ -53,7 +53,7 @@ const buyableVariantInclude = Prisma.validator<Prisma.ProductVariantInclude>()({
       seller: true
     }
   }
-})
+} satisfies Prisma.ProductVariantInclude
 
 type CartItemRecord = Prisma.CartItemGetPayload<{
   include: typeof cartItemInclude

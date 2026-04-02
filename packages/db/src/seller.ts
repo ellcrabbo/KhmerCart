@@ -7,7 +7,7 @@ import {
   type Seller,
   type SellerDocument,
   type User
-} from "@prisma/client";
+} from "./prisma-client";
 import { createSignedDownloadUrl, createSignedUploadUrl, getSignedUrlTtlSeconds } from "./storage";
 import { prisma } from "./prisma";
 

@@ -7,7 +7,7 @@ import {
   prisma,
   releaseHold
 } from "@khmercart/db";
-import { UserRole } from "@prisma/client";
+import { UserRole } from "@khmercart/db/prisma-client";
 
 function createUniquePhone(prefix: string, suffix: string) {
   const digits = createHash("sha256")

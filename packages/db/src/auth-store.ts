@@ -7,8 +7,8 @@ import type {
   SessionUser
 } from "@khmercart/core/auth";
 import { getPrimaryRole } from "@khmercart/core/auth";
-import type { Prisma } from "@prisma/client";
-import { OtpChannel, OtpPurpose as PrismaOtpPurpose, UserRole } from "@prisma/client";
+import type { Prisma } from "./prisma-client";
+import { OtpChannel, OtpPurpose as PrismaOtpPurpose, UserRole } from "./prisma-client";
 import { prisma } from "./prisma";
 
 function mapOtpChannel(channel: CoreOtpChannel): OtpChannel {

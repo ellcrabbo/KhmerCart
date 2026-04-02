@@ -17,7 +17,7 @@ import {
   type PaymentEvent,
   type PaymentProvider,
   type PaymentStatus
-} from "@prisma/client";
+} from "./prisma-client";
 import { getConnectionSettings } from "./env";
 import {
   appendOrderEventInTransaction,
@@ -26,9 +26,9 @@ import {
 } from "./orders";
 import { prisma } from "./prisma";
 
-const paymentWithOrderInclude = Prisma.validator<Prisma.PaymentInclude>()({
+const paymentWithOrderInclude = {
   order: true
-});
+} satisfies Prisma.PaymentInclude;
 
 type PaymentWithOrder = Prisma.PaymentGetPayload<{
   include: typeof paymentWithOrderInclude;

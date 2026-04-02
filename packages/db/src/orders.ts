@@ -5,7 +5,7 @@ import {
   type OrderLifecycleState,
   type OrderTransitionActor
 } from "@khmercart/core";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "./prisma-client";
 import { prisma } from "./prisma";
 
 type DatabaseClient = Prisma.TransactionClient | typeof prisma;

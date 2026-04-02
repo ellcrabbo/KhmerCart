@@ -1,10 +1,9 @@
 import {
   KycStatus,
-  Prisma,
   ProductModerationStatus,
   ProductStatus
-} from "@prisma/client";
-import type { Currency } from "@prisma/client";
+} from "./prisma-client";
+import type { Currency, Prisma } from "./prisma-client";
 import { prisma } from "./prisma";
 
 type BuyerCursor = {
@@ -12,7 +11,7 @@ type BuyerCursor = {
   publishedAt: string;
 };
 
-const buyerProductInclude = Prisma.validator<Prisma.ProductInclude>()({
+const buyerProductInclude = {
   images: {
     orderBy: [{ isPrimary: "desc" }, { position: "asc" }, { createdAt: "asc" }]
   },
@@ -39,7 +38,7 @@ const buyerProductInclude = Prisma.validator<Prisma.ProductInclude>()({
       }
     }
   }
-});
+} satisfies Prisma.ProductInclude;
 
 type BuyerProductRecord = Prisma.ProductGetPayload<{
   include: typeof buyerProductInclude;

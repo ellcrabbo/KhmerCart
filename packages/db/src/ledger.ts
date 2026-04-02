@@ -9,7 +9,7 @@ import {
   PayoutBatchStatus,
   type Currency,
   type LedgerDirection
-} from "@prisma/client";
+} from "./prisma-client";
 import { prisma } from "./prisma";
 
 const NORMAL_DEBIT_ACCOUNT_TYPES = new Set<LedgerAccountType>([

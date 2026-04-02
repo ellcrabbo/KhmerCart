@@ -4,7 +4,7 @@ import {
   getBuyerProductFeed,
   prisma
 } from "@khmercart/db";
-import { KycStatus, ProductModerationStatus, UserRole } from "@prisma/client";
+import { KycStatus, ProductModerationStatus, UserRole } from "@khmercart/db/prisma-client";
 
 async function createApprovedSellerFixture(suffix: string) {
   const user = await prisma.user.create({

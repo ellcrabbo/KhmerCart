@@ -1,6 +1,6 @@
 import { readAuthConfig, requireRoleFromHeaders } from "@khmercart/core/auth";
 import { decideDispute } from "@khmercart/db";
-import { DisputeStatus } from "@prisma/client";
+import { DisputeStatus } from "@khmercart/db/prisma-client";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getClientIpAddress, jsonErrorResponse, readJsonBody } from "../../../_lib/route";

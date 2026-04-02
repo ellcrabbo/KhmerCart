@@ -13,7 +13,7 @@ import {
   ProductModerationStatus,
   ProductStatus,
   UserRole
-} from "@prisma/client";
+} from "@khmercart/db/prisma-client";
 
 async function createUserWithRole(input: {
   email: string;
