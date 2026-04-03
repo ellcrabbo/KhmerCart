@@ -24,17 +24,9 @@ function createPostgresClient(databaseUrl: string): Client {
 }
 
 function createRedisClient(redisUrl: string): Redis {
-  const url = new URL(redisUrl);
-  const database = url.pathname.replace(/^\//, "");
-
-  return new Redis({
-    db: database ? Number(database) : 0,
-    host: url.hostname,
+  return new Redis(redisUrl, {
     lazyConnect: true,
-    maxRetriesPerRequest: 1,
-    password: decodeURIComponent(url.password),
-    port: url.port ? Number(url.port) : 6379,
-    username: decodeURIComponent(url.username) || undefined
+    maxRetriesPerRequest: 1
   });
 }
 
