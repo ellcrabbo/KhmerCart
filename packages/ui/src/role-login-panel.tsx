@@ -159,20 +159,20 @@ export function RoleLoginPanel({
             Access the {appName}
           </h2>
           <p className="text-sm leading-7 text-stone-700 md:text-base">
-            Use the email address or phone number attached to your {roleLabel.toLowerCase()} account.
-            OTP verification happens on this domain so the session cookie stays attached to the app
-            you are opening.
+            Use the email address attached to your {roleLabel.toLowerCase()} account. OTP
+            verification happens on this domain so the session cookie stays attached to the app you
+            are opening.
           </p>
         </div>
 
         <form className="mt-6 space-y-4" onSubmit={requestOtp}>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-stone-800">Email or phone</span>
+            <span className="text-sm font-medium text-stone-800">Email</span>
             <input
               autoComplete="username"
               className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-500/60 focus:bg-white"
               onChange={(event) => setIdentifier(event.target.value)}
-              placeholder="admin@khmercart.local or +855..."
+              placeholder="admin@khmercart.local"
               value={identifier}
             />
           </label>

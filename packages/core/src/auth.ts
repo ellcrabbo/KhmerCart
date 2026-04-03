@@ -395,7 +395,7 @@ export function createOtpDeliveryService(
         if (!twilioSms) {
           throw new AuthError(
             "OTP_DELIVERY_UNAVAILABLE",
-            "Phone OTP delivery is not configured.",
+            "Phone OTP delivery is not configured. Sign in with email instead.",
             503
           );
         }

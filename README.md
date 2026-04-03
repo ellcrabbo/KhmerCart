@@ -170,6 +170,7 @@ Real OTP delivery:
 
 - Keep `OTP_PROVIDER=DEV_STUB` for local/demo flows that surface the code in the UI.
 - Set `OTP_PROVIDER=REAL` in Vercel to enable actual delivery.
+- Cheapest rollout: use email OTP everywhere first and leave the Twilio variables empty.
 - Phone identifiers are delivered through Twilio SMS using:
   - `TWILIO_ACCOUNT_SID`
   - `TWILIO_AUTH_TOKEN`
@@ -177,6 +178,12 @@ Real OTP delivery:
 - Email identifiers are delivered through Resend using:
   - `RESEND_API_KEY`
   - `RESEND_FROM_EMAIL`
+- Seeded demo emails:
+  - `admin@khmercart.local`
+  - `buyer@khmercart.local`
+  - `mekong-crafts@khmercart.local`
+  - `tonle-gourmet@khmercart.local`
+  - `pending-seller@khmercart.local`
 
 ## Database workflow
 
