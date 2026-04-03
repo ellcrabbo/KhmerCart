@@ -2,10 +2,16 @@ import { AuthError, readAuthConfig, requireRoleFromHeaders } from "@khmercart/co
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-const publicPaths = new Set(["/api/health", "/health"]);
+const publicPaths = new Set(["/api/health", "/favicon.ico", "/favicon.png", "/health", "/login"]);
 
 export async function proxy(request: NextRequest) {
-  if (publicPaths.has(request.nextUrl.pathname)) {
+  const { pathname, search } = request.nextUrl;
+
+  if (publicPaths.has(pathname) || pathname.startsWith("/api/auth")) {
+    return NextResponse.next();
+  }
+
+  if (pathname.startsWith("/api/")) {
     return NextResponse.next();
   }
 
@@ -16,9 +22,25 @@ export async function proxy(request: NextRequest) {
   } catch (error) {
     const status = error instanceof AuthError ? error.status : 401;
 
-    return new NextResponse(status === 403 ? "FORBIDDEN" : "UNAUTHORIZED", {
-      status
-    });
+    if (status === 401) {
+      const location = new URL("/login", request.url);
+
+      location.searchParams.set("error", "session");
+      location.searchParams.set("next", `${pathname}${search}`);
+
+      return NextResponse.redirect(location);
+    }
+
+    if (status === 403) {
+      const location = new URL("/login", request.url);
+
+      location.searchParams.set("error", "forbidden");
+      location.searchParams.set("next", `${pathname}${search}`);
+
+      return NextResponse.redirect(location);
+    }
+
+    return new NextResponse("UNAUTHORIZED", { status });
   }
 }
 

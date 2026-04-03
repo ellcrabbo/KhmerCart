@@ -40,4 +40,17 @@ export class NextResponse extends Response {
       status: init.status ?? 200
     });
   }
+
+  static redirect(url: string | URL, init: number | ResponseInit = 307) {
+    const status = typeof init === "number" ? init : init.status ?? 307;
+    const headers = new Headers(typeof init === "number" ? undefined : init.headers);
+
+    headers.set("location", String(url));
+
+    return new NextResponse(null, {
+      ...(typeof init === "number" ? {} : init),
+      headers,
+      status
+    });
+  }
 }

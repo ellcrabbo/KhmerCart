@@ -5,6 +5,7 @@ import { POST as postDisputeDecision } from "../apps/admin/app/api/disputes/[dis
 import { POST as postProductDecision } from "../apps/admin/app/api/products/[productId]/decision/route";
 import { POST as postSellerDecision } from "../apps/admin/app/api/sellers/[sellerId]/decision/route";
 import { proxy as apiProxy } from "../apps/api/proxy";
+import { proxy as sellerProxy } from "../apps/seller/proxy";
 import { NextRequest } from "./shims/next-server";
 
 const jwtSecret = "test-secret";
@@ -103,7 +104,29 @@ describe("route guards", () => {
     });
   });
 
-  it("returns 403 from the admin proxy for buyer-only page requests", async () => {
+  it("redirects anonymous admin page requests to the same-domain login page", async () => {
+    const request = new NextRequest("http://localhost:3003/approvals");
+
+    const response = await adminProxy(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3003/login?error=session&next=%2Fapprovals"
+    );
+  });
+
+  it("redirects anonymous seller page requests to the same-domain login page", async () => {
+    const request = new NextRequest("http://localhost:3001/");
+
+    const response = await sellerProxy(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3001/login?error=session&next=%2F"
+    );
+  });
+
+  it("redirects wrong-role admin page requests to the login page with a forbidden error", async () => {
     const token = await createToken(["BUYER"]);
     const request = new NextRequest("http://localhost:3003/approvals", {
       headers: {
@@ -113,8 +136,10 @@ describe("route guards", () => {
 
     const response = await adminProxy(request);
 
-    expect(response.status).toBe(403);
-    expect(await response.text()).toBe("FORBIDDEN");
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3003/login?error=forbidden&next=%2Fapprovals"
+    );
   });
 
   it("returns 403 from the product moderation route for buyer-only sessions", async () => {
