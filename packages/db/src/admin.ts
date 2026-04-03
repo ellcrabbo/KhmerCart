@@ -160,6 +160,20 @@ function disputeSnapshot(dispute: {
   } satisfies Prisma.InputJsonValue;
 }
 
+const disputeSnapshotSelect = {
+  adminNote: true,
+  buyerMessage: true,
+  id: true,
+  orderId: true,
+  reason: true,
+  requestedRefundMinor: true,
+  resolutionNote: true,
+  resolvedAt: true,
+  resolvedRefundMinor: true,
+  sellerResponse: true,
+  status: true
+} satisfies Prisma.DisputeSelect;
+
 const disputeInclude = {
   order: {
     include: {
@@ -172,6 +186,10 @@ const disputeInclude = {
 
 type DisputeRecord = Prisma.DisputeGetPayload<{
   include: typeof disputeInclude;
+}>;
+
+type DisputeSnapshotRecord = Prisma.DisputeGetPayload<{
+  select: typeof disputeSnapshotSelect;
 }>;
 
 function mapDisputeDetail(dispute: DisputeRecord): DisputeDetail {
@@ -398,9 +416,9 @@ export async function decideDispute(input: {
     );
   }
 
-  return prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const dispute = await tx.dispute.findUnique({
-      include: disputeInclude,
+      select: disputeSnapshotSelect,
       where: {
         id: input.disputeId
       }
@@ -433,27 +451,27 @@ export async function decideDispute(input: {
     await recordAuditLog(tx, {
       action: resolveDisputeAction(input.status),
       actorUserId: input.actorUserId,
-      afterData: disputeSnapshot(updatedDispute),
+      afterData: disputeSnapshot(updatedDispute as DisputeSnapshotRecord),
       beforeData: disputeSnapshot(dispute),
       entityId: updatedDispute.id,
       entityType: "Dispute",
       ipAddress: input.ipAddress,
       userAgent: input.userAgent
     });
-
-    const completeDispute = await tx.dispute.findUnique({
-      include: disputeInclude,
-      where: {
-        id: updatedDispute.id
-      }
-    });
-
-    if (!completeDispute) {
-      throw new SellerServiceError("NOT_FOUND", "Dispute not found after update.", 404);
-    }
-
-    return mapDisputeDetail(completeDispute);
   });
+
+  const completeDispute = await prisma.dispute.findUnique({
+    include: disputeInclude,
+    where: {
+      id: input.disputeId
+    }
+  });
+
+  if (!completeDispute) {
+    throw new SellerServiceError("NOT_FOUND", "Dispute not found after update.", 404);
+  }
+
+  return mapDisputeDetail(completeDispute);
 }
 
 export async function listAuditLogs(limit = 80): Promise<AdminAuditLogEntry[]> {
