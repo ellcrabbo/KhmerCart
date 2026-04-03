@@ -583,9 +583,20 @@ function parseStoredCheckoutResponse(value: Prisma.JsonValue | null): BuyerCheck
 }
 
 export async function getBuyerCart(input: { userId: string }): Promise<BuyerCart> {
-  await prisma.$transaction(async (tx) => {
-    await requireBuyerUser(tx, input.userId)
+  const user = await prisma.user.findUnique({
+    include: {
+      roleAssignments: true
+    },
+    where: {
+      id: input.userId
+    }
   })
+
+  if (!user) {
+    throw new CheckoutServiceError("NOT_FOUND", "Buyer not found.", 404)
+  }
+
+  assertBuyerUserRole(user)
 
   return mapBuyerCart(await getBuyerCartRecord(prisma, input.userId))
 }
@@ -593,7 +604,7 @@ export async function getBuyerCart(input: { userId: string }): Promise<BuyerCart
 export async function mutateBuyerCartItem(
   input: MutateBuyerCartItemInput
 ): Promise<BuyerCart> {
-  return prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     await requireBuyerUser(tx, input.userId)
     const cart = await ensureBuyerCart(tx, input.userId)
     const variant = await getBuyableVariant(tx, input.variantId)
@@ -668,9 +679,9 @@ export async function mutateBuyerCartItem(
         }
       })
     }
-
-    return mapBuyerCart(await getBuyerCartRecord(tx, input.userId))
   })
+
+  return mapBuyerCart(await getBuyerCartRecord(prisma, input.userId))
 }
 
 export async function checkoutBuyerCart(
