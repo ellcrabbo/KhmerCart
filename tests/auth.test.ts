@@ -9,6 +9,7 @@ import type {
 } from "@khmercart/core/auth";
 import {
   AuthError,
+  createOtpDeliveryService,
   OTP_PROVIDER_DEV_STUB,
   requestOtpLogin,
   verifyOtpLogin,
@@ -259,6 +260,120 @@ describe("OTP auth flow", () => {
     ).rejects.toMatchObject<AuthError>({
       code: "OTP_INVALID",
       status: 400
+    });
+  });
+
+  it("delivers phone OTP codes through Twilio when real delivery is enabled", async () => {
+    const store = new MemoryAuthStore();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ sid: "SM123" }), {
+        headers: {
+          "content-type": "application/json"
+        },
+        status: 201
+      })
+    );
+    const delivery = createOtpDeliveryService(
+      {
+        OTP_PROVIDER: "REAL",
+        TWILIO_ACCOUNT_SID: "AC1234567890abcdef1234567890abcd",
+        TWILIO_AUTH_TOKEN: "twilio-secret",
+        TWILIO_MESSAGING_SERVICE_SID: "MG1234567890abcdef1234567890abcd"
+      },
+      { fetch: fetchMock }
+    );
+    const result = await requestOtpLogin(
+      store,
+      {
+        ...baseConfig,
+        otpProvider: "REAL"
+      },
+      {
+        identifier: "+85512345678",
+        now: new Date("2099-03-29T12:30:00.000Z")
+      },
+      delivery
+    );
+
+    expect(result.devCode).toBeUndefined();
+    expect(result.provider).toBe("Twilio SMS");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/Messages.json");
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("MessagingServiceSid=");
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("To=%2B85512345678");
+  });
+
+  it("delivers email OTP codes through Resend when real delivery is enabled", async () => {
+    const store = new MemoryAuthStore();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ id: "email_123" }), {
+        headers: {
+          "content-type": "application/json"
+        },
+        status: 200
+      })
+    );
+    const delivery = createOtpDeliveryService(
+      {
+        OTP_PROVIDER: "REAL",
+        RESEND_API_KEY: "re_test_123",
+        RESEND_FROM_EMAIL: "KhmerCart <noreply@khmercart.shop>"
+      },
+      { fetch: fetchMock }
+    );
+    const result = await requestOtpLogin(
+      store,
+      {
+        ...baseConfig,
+        otpProvider: "REAL"
+      },
+      {
+        identifier: "buyer@khmercart.local",
+        now: new Date("2099-03-29T12:45:00.000Z")
+      },
+      delivery
+    );
+
+    expect(result.devCode).toBeUndefined();
+    expect(result.provider).toBe("Resend Email");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://api.resend.com/emails");
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      authorization: "Bearer re_test_123"
+    });
+  });
+
+  it("fails with a clear error when real OTP delivery is not configured for the channel", async () => {
+    const store = new MemoryAuthStore();
+    const delivery = createOtpDeliveryService(
+      {
+        OTP_PROVIDER: "REAL",
+        TWILIO_ACCOUNT_SID: "AC1234567890abcdef1234567890abcd",
+        TWILIO_AUTH_TOKEN: "twilio-secret",
+        TWILIO_MESSAGING_SERVICE_SID: "MG1234567890abcdef1234567890abcd"
+      },
+      {
+        fetch: vi.fn<typeof fetch>()
+      }
+    );
+
+    await expect(
+      requestOtpLogin(
+        store,
+        {
+          ...baseConfig,
+          otpProvider: "REAL"
+        },
+        {
+          identifier: "admin@khmercart.local",
+          now: new Date("2099-03-29T12:55:00.000Z")
+        },
+        delivery
+      )
+    ).rejects.toMatchObject<AuthError>({
+      code: "OTP_DELIVERY_UNAVAILABLE",
+      status: 503
     });
   });
 

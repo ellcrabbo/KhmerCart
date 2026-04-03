@@ -37,6 +37,22 @@ export type AuthConfig = {
   sessionTtlSeconds: number;
 };
 
+export type OtpDeliveryRequest = {
+  channel: OtpChannel;
+  code: string;
+  expiresAt: Date;
+  identifier: string;
+  purpose: OtpPurpose;
+};
+
+export type OtpDeliveryResult = {
+  provider: string;
+};
+
+export interface OtpDeliveryService {
+  deliverOtp(input: OtpDeliveryRequest): Promise<OtpDeliveryResult>;
+}
+
 export type OtpChallenge = {
   attempts: number;
   channel: OtpChannel;
@@ -178,6 +194,226 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
   const parsed = Number(value);
 
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+type OtpDeliveryServiceOptions = {
+  fetch?: typeof fetch;
+  userAgent?: string;
+};
+
+type TwilioSmsConfig = {
+  accountSid: string;
+  authToken: string;
+  fromNumber: string | null;
+  messagingServiceSid: string | null;
+};
+
+type ResendEmailConfig = {
+  apiKey: string;
+  fromEmail: string;
+};
+
+function readTwilioSmsConfig(env: NodeJS.ProcessEnv): TwilioSmsConfig | null {
+  const accountSid = env.TWILIO_ACCOUNT_SID?.trim();
+  const authToken = env.TWILIO_AUTH_TOKEN?.trim();
+  const messagingServiceSid = env.TWILIO_MESSAGING_SERVICE_SID?.trim() || null;
+  const fromNumber = env.TWILIO_FROM_NUMBER?.trim() || null;
+
+  if (!accountSid || !authToken) {
+    return null;
+  }
+
+  if (!messagingServiceSid && !fromNumber) {
+    return null;
+  }
+
+  return {
+    accountSid,
+    authToken,
+    fromNumber,
+    messagingServiceSid
+  };
+}
+
+function readResendEmailConfig(env: NodeJS.ProcessEnv): ResendEmailConfig | null {
+  const apiKey = env.RESEND_API_KEY?.trim();
+  const fromEmail = env.RESEND_FROM_EMAIL?.trim();
+
+  if (!apiKey || !fromEmail) {
+    return null;
+  }
+
+  return {
+    apiKey,
+    fromEmail
+  };
+}
+
+function formatOtpTtlMinutes(expiresAt: Date): number {
+  return Math.max(Math.ceil((expiresAt.getTime() - Date.now()) / 60_000), 1);
+}
+
+function buildOtpMessage(input: OtpDeliveryRequest): string {
+  const minutes = formatOtpTtlMinutes(input.expiresAt);
+
+  return `Your KhmerCart verification code is ${input.code}. It expires in ${minutes} minute${
+    minutes === 1 ? "" : "s"
+  }.`;
+}
+
+async function readProviderErrorMessage(response: Response): Promise<string | null> {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      const payload = (await response.json()) as {
+        error?: { message?: string };
+        errors?: Array<{ message?: string }>;
+        message?: string;
+      };
+
+      return (
+        payload.message ??
+        payload.error?.message ??
+        payload.errors?.find((error) => typeof error.message === "string")?.message ??
+        null
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    const text = await response.text();
+
+    return text.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function deliverOtpByTwilio(
+  fetchImpl: typeof fetch,
+  config: TwilioSmsConfig,
+  input: OtpDeliveryRequest
+): Promise<OtpDeliveryResult> {
+  const body = new URLSearchParams({
+    Body: buildOtpMessage(input),
+    To: input.identifier
+  });
+
+  if (config.messagingServiceSid) {
+    body.set("MessagingServiceSid", config.messagingServiceSid);
+  } else if (config.fromNumber) {
+    body.set("From", config.fromNumber);
+  }
+
+  const response = await fetchImpl(
+    `https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}/Messages.json`,
+    {
+      body: body.toString(),
+      headers: {
+        authorization: `Basic ${Buffer.from(
+          `${config.accountSid}:${config.authToken}`
+        ).toString("base64")}`,
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      method: "POST"
+    }
+  );
+
+  if (!response.ok) {
+    const message = await readProviderErrorMessage(response);
+
+    throw new AuthError(
+      "OTP_DELIVERY_FAILED",
+      message ?? "Unable to send an SMS verification code right now.",
+      502
+    );
+  }
+
+  return {
+    provider: "Twilio SMS"
+  };
+}
+
+async function deliverOtpByResend(
+  fetchImpl: typeof fetch,
+  config: ResendEmailConfig,
+  input: OtpDeliveryRequest,
+  userAgent: string
+): Promise<OtpDeliveryResult> {
+  const response = await fetchImpl("https://api.resend.com/emails", {
+    body: JSON.stringify({
+      from: config.fromEmail,
+      html: `<p>${buildOtpMessage(input)}</p>`,
+      subject: "Your KhmerCart verification code",
+      text: buildOtpMessage(input),
+      to: [input.identifier]
+    }),
+    headers: {
+      authorization: `Bearer ${config.apiKey}`,
+      "content-type": "application/json",
+      "user-agent": userAgent
+    },
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    const message = await readProviderErrorMessage(response);
+
+    throw new AuthError(
+      "OTP_DELIVERY_FAILED",
+      message ?? "Unable to send an email verification code right now.",
+      502
+    );
+  }
+
+  return {
+    provider: "Resend Email"
+  };
+}
+
+export function createOtpDeliveryService(
+  env: NodeJS.ProcessEnv = process.env,
+  options: OtpDeliveryServiceOptions = {}
+): OtpDeliveryService | null {
+  const provider = env.OTP_PROVIDER?.trim() || OTP_PROVIDER_DEV_STUB;
+
+  if (provider === OTP_PROVIDER_DEV_STUB) {
+    return null;
+  }
+
+  const fetchImpl = options.fetch ?? fetch;
+  const userAgent = options.userAgent ?? "KhmerCart/1.0";
+  const twilioSms = readTwilioSmsConfig(env);
+  const resendEmail = readResendEmailConfig(env);
+
+  return {
+    async deliverOtp(input) {
+      if (input.channel === "PHONE") {
+        if (!twilioSms) {
+          throw new AuthError(
+            "OTP_DELIVERY_UNAVAILABLE",
+            "Phone OTP delivery is not configured.",
+            503
+          );
+        }
+
+        return deliverOtpByTwilio(fetchImpl, twilioSms, input);
+      }
+
+      if (!resendEmail) {
+        throw new AuthError(
+          "OTP_DELIVERY_UNAVAILABLE",
+          "Email OTP delivery is not configured.",
+          503
+        );
+      }
+
+      return deliverOtpByResend(fetchImpl, resendEmail, input, userAgent);
+    }
+  };
 }
 
 export function detectOtpChannel(identifier: string): OtpChannel {
@@ -389,7 +625,8 @@ export function createSessionCookieOptions(maxAgeSeconds: number) {
 export async function requestOtpLogin(
   store: AuthStore,
   config: AuthConfig,
-  input: RequestOtpInput
+  input: RequestOtpInput,
+  deliveryService?: OtpDeliveryService | null
 ): Promise<RequestOtpResult> {
   const now = input.now ?? new Date();
   const identifier = normalizeIdentifier(input.identifier);
@@ -421,13 +658,47 @@ export async function requestOtpLogin(
     sentAt: now
   });
 
+  let provider = config.otpProvider;
+
+  if (config.otpProvider !== OTP_PROVIDER_DEV_STUB) {
+    if (!deliveryService) {
+      throw new AuthError(
+        "OTP_DELIVERY_UNAVAILABLE",
+        "OTP delivery is not configured.",
+        503
+      );
+    }
+
+    try {
+      provider = (
+        await deliveryService.deliverOtp({
+          channel,
+          code,
+          expiresAt: challenge.expiresAt,
+          identifier,
+          purpose: OTP_PURPOSE_LOGIN
+        })
+      ).provider;
+    } catch (error) {
+      if (error instanceof AuthError) {
+        throw error;
+      }
+
+      throw new AuthError(
+        "OTP_DELIVERY_FAILED",
+        "Unable to send a verification code right now.",
+        502
+      );
+    }
+  }
+
   return {
     channel,
     challengeId: challenge.id,
     devCode: config.otpProvider === OTP_PROVIDER_DEV_STUB ? code : undefined,
     expiresAt: challenge.expiresAt.toISOString(),
     identifier,
-    provider: config.otpProvider,
+    provider,
     rateLimit
   };
 }

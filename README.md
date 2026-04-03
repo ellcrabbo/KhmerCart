@@ -153,6 +153,11 @@ Important variables:
 - `SUPPORTED_LOCALES`
 - `AUTH_JWT_SECRET`
 - `OTP_PROVIDER`
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_FROM_NUMBER`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
 - `KYC_DOCUMENT_TYPES`
 - `S3_ENDPOINT`
 - `S3_BUCKET`
@@ -160,6 +165,18 @@ Important variables:
 - `S3_SECRET`
 
 The buyer app defaults to English and supports locale switching between English and Khmer.
+
+Real OTP delivery:
+
+- Keep `OTP_PROVIDER=DEV_STUB` for local/demo flows that surface the code in the UI.
+- Set `OTP_PROVIDER=REAL` in Vercel to enable actual delivery.
+- Phone identifiers are delivered through Twilio SMS using:
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+  - `TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_FROM_NUMBER`
+- Email identifiers are delivered through Resend using:
+  - `RESEND_API_KEY`
+  - `RESEND_FROM_EMAIL`
 
 ## Database workflow
 

@@ -1,4 +1,9 @@
-import { AuthError, requestOtpLogin, readAuthConfig } from "@khmercart/core/auth";
+import {
+  AuthError,
+  createOtpDeliveryService,
+  requestOtpLogin,
+  readAuthConfig
+} from "@khmercart/core/auth";
 import { createAuthStore } from "@khmercart/db/auth-store";
 import { NextResponse } from "next/server";
 import { jsonErrorResponse, readJsonBody } from "../../_lib/route";
@@ -17,9 +22,14 @@ export async function POST(request: Request) {
       throw new AuthError("BAD_REQUEST", "Identifier is required.", 400);
     }
 
-    const result = await requestOtpLogin(createAuthStore(), readAuthConfig(process.env), {
-      identifier: body.identifier
-    });
+    const result = await requestOtpLogin(
+      createAuthStore(),
+      readAuthConfig(process.env),
+      {
+        identifier: body.identifier
+      },
+      createOtpDeliveryService(process.env)
+    );
 
     return NextResponse.json({
       channel: result.channel,
