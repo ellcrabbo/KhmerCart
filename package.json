@@ -42,7 +42,7 @@
     "react": "latest",
     "react-dom": "latest",
     "tsx": "latest",
-    "turbo": "latest",
+    "turbo": "2.9.3",
     "typescript": "^5.9.0",
     "typescript-eslint": "latest",
     "vitest": "^4.1.2"
