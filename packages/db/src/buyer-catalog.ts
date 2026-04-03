@@ -78,6 +78,20 @@ export type BuyerCatalogVariant = {
   weightGrams: number | null;
 };
 
+export type BuyerLeadVariant = Pick<
+  BuyerCatalogVariant,
+  | "attributes"
+  | "availableQuantity"
+  | "compareAtPriceMinor"
+  | "currency"
+  | "id"
+  | "isDefault"
+  | "name"
+  | "priceMinor"
+  | "sku"
+  | "weightGrams"
+>;
+
 export type BuyerCatalogSeller = {
   contact: string;
   displayName: string;
@@ -89,6 +103,7 @@ export type BuyerFeedItem = {
   description: string;
   featuredImage: BuyerCatalogImage | null;
   id: string;
+  leadVariant: BuyerLeadVariant;
   name: string;
   pricing: {
     compareAtPriceMinor: number | null;
@@ -235,6 +250,26 @@ function resolveLeadVariant(product: BuyerProductRecord) {
   };
 }
 
+function mapBuyerVariant(
+  variant: BuyerProductRecord["variants"][number] & {
+    currency: Currency;
+    priceMinor: number;
+  }
+): BuyerLeadVariant {
+  return {
+    attributes: mapAttributes(variant.attributes),
+    availableQuantity: variant.inventory?.availableQuantity ?? 0,
+    compareAtPriceMinor: variant.compareAtPriceMinor ?? null,
+    currency: variant.currency,
+    id: variant.id,
+    isDefault: variant.isDefault,
+    name: variant.name,
+    priceMinor: variant.priceMinor,
+    sku: variant.sku,
+    weightGrams: variant.weightGrams ?? null
+  };
+}
+
 function sumAvailableInventory(product: BuyerProductRecord): number {
   return product.variants.reduce(
     (sum, variant) => sum + (variant.inventory?.availableQuantity ?? 0),
@@ -263,6 +298,7 @@ function mapBuyerFeedItem(product: BuyerProductRecord): BuyerFeedItem {
     description: product.description ?? "",
     featuredImage: resolveFeaturedImage(product),
     id: product.id,
+    leadVariant: mapBuyerVariant(leadVariant),
     name: product.name,
     pricing: {
       compareAtPriceMinor: leadVariant.compareAtPriceMinor ?? null,
@@ -304,20 +340,7 @@ function mapBuyerProductDetail(product: BuyerProductRecord): BuyerProductDetail 
         return [];
       }
 
-      return [
-        {
-          attributes: mapAttributes(variant.attributes),
-          availableQuantity: variant.inventory?.availableQuantity ?? 0,
-          compareAtPriceMinor: variant.compareAtPriceMinor ?? null,
-          currency: variant.currency,
-          id: variant.id,
-          isDefault: variant.isDefault,
-          name: variant.name,
-          priceMinor: variant.priceMinor,
-          sku: variant.sku,
-          weightGrams: variant.weightGrams ?? null
-        }
-      ];
+      return [mapBuyerVariant(variant as typeof variant & { currency: Currency; priceMinor: number })];
     })
   };
 }

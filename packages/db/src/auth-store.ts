@@ -7,8 +7,7 @@ import type {
   SessionUser
 } from "@khmercart/core/auth";
 import { getPrimaryRole } from "@khmercart/core/auth";
-import type { Prisma } from "./prisma-client";
-import { OtpChannel, OtpPurpose as PrismaOtpPurpose, UserRole } from "./prisma-client";
+import { Prisma, OtpChannel, OtpPurpose as PrismaOtpPurpose, UserRole } from "./prisma-client";
 import { prisma } from "./prisma";
 
 function mapOtpChannel(channel: CoreOtpChannel): OtpChannel {
@@ -63,6 +62,33 @@ function uniqueUserWhere(identifier: string, channel: CoreOtpChannel) {
     : ({ phone: identifier } satisfies Prisma.UserWhereUniqueInput);
 }
 
+function isRetryableAuthStoreError(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return error.code === "P2028" || error.code === "P2034";
+  }
+
+  return (
+    error instanceof Error &&
+    /write conflict|deadlock|transaction.*closed|transaction.*expired/i.test(error.message)
+  );
+}
+
+async function withAuthStoreRetry<T>(work: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      if (isRetryableAuthStoreError(error) && attempt < 2) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error("Unreachable auth store retry state.");
+}
+
 async function ensureBuyerRole(tx: Prisma.TransactionClient, userId: string): Promise<void> {
   const existingRole = await tx.userRoleAssignment.findUnique({
     where: {
@@ -106,39 +132,63 @@ async function getUserSession(tx: Prisma.TransactionClient, userId: string): Pro
 export function createAuthStore(): AuthStore {
   return {
     async consumeOtpChallenge(challengeId, consumedAt) {
-      await prisma.otpChallenge.update({
-        data: {
-          consumedAt
-        },
-        where: {
-          id: challengeId
-        }
-      });
+      await withAuthStoreRetry(() =>
+        prisma.otpChallenge.update({
+          data: {
+            consumedAt
+          },
+          where: {
+            id: challengeId
+          }
+        })
+      );
     },
 
     async consumeRateLimit({ key, limit, now, windowSeconds }) {
-      return prisma.$transaction(async (tx) => {
-        const bucket = await tx.rateLimitBucket.findUnique({
-          where: {
-            key
+      return withAuthStoreRetry(() =>
+        prisma.$transaction(async (tx) => {
+          const bucket = await tx.rateLimitBucket.findUnique({
+            where: {
+              key
+            }
+          });
+
+          if (
+            !bucket ||
+            bucket.windowStartedAt.getTime() + windowSeconds * 1000 <= now.getTime()
+          ) {
+            const resetAt = addSeconds(now, windowSeconds);
+
+            await tx.rateLimitBucket.upsert({
+              create: {
+                hits: 1,
+                key,
+                windowStartedAt: now
+              },
+              update: {
+                hits: 1,
+                windowStartedAt: now
+              },
+              where: {
+                key
+              }
+            });
+
+            return {
+              allowed: true,
+              remaining: Math.max(limit - 1, 0),
+              resetAt,
+              retryAfterSeconds: windowSeconds
+            } satisfies RateLimitResult;
           }
-        });
 
-        if (
-          !bucket ||
-          bucket.windowStartedAt.getTime() + windowSeconds * 1000 <= now.getTime()
-        ) {
-          const resetAt = addSeconds(now, windowSeconds);
+          const nextHits = bucket.hits + 1;
+          const allowed = nextHits <= limit;
+          const resetAt = addSeconds(bucket.windowStartedAt, windowSeconds);
 
-          await tx.rateLimitBucket.upsert({
-            create: {
-              hits: 1,
-              key,
-              windowStartedAt: now
-            },
-            update: {
-              hits: 1,
-              windowStartedAt: now
+          await tx.rateLimitBucket.update({
+            data: {
+              hits: nextHits
             },
             where: {
               key
@@ -146,36 +196,16 @@ export function createAuthStore(): AuthStore {
           });
 
           return {
-            allowed: true,
-            remaining: Math.max(limit - 1, 0),
+            allowed,
+            remaining: Math.max(limit - nextHits, 0),
             resetAt,
-            retryAfterSeconds: windowSeconds
+            retryAfterSeconds: Math.max(
+              Math.ceil((resetAt.getTime() - now.getTime()) / 1000),
+              0
+            )
           } satisfies RateLimitResult;
-        }
-
-        const nextHits = bucket.hits + 1;
-        const allowed = nextHits <= limit;
-        const resetAt = addSeconds(bucket.windowStartedAt, windowSeconds);
-
-        await tx.rateLimitBucket.update({
-          data: {
-            hits: nextHits
-          },
-          where: {
-            key
-          }
-        });
-
-        return {
-          allowed,
-          remaining: Math.max(limit - nextHits, 0),
-          resetAt,
-          retryAfterSeconds: Math.max(
-            Math.ceil((resetAt.getTime() - now.getTime()) / 1000),
-            0
-          )
-        } satisfies RateLimitResult;
-      });
+        })
+      );
     },
 
     async findOtpChallenge(identifier, channel, purpose) {
@@ -193,55 +223,61 @@ export function createAuthStore(): AuthStore {
     },
 
     async incrementOtpChallengeAttempts(challengeId, nextAttempts) {
-      await prisma.otpChallenge.update({
-        data: {
-          attempts: nextAttempts
-        },
-        where: {
-          id: challengeId
-        }
-      });
+      await withAuthStoreRetry(() =>
+        prisma.otpChallenge.update({
+          data: {
+            attempts: nextAttempts
+          },
+          where: {
+            id: challengeId
+          }
+        })
+      );
     },
 
     async resolveIdentityForLogin(identifier, channel) {
-      return prisma.$transaction(async (tx) => {
-        let user = await tx.user.findUnique({
-          include: {
-            roleAssignments: true
-          },
-          where: uniqueUserWhere(identifier, channel)
-        });
-
-        if (!user) {
-          user = await tx.user.create({
-            data: {
-              email: channel === "EMAIL" ? identifier : null,
-              fullName: defaultNameForIdentifier(identifier, channel),
-              phone: channel === "PHONE" ? identifier : null
-            },
+      return withAuthStoreRetry(() =>
+        prisma.$transaction(async (tx) => {
+          let user = await tx.user.findUnique({
             include: {
               roleAssignments: true
-            }
+            },
+            where: uniqueUserWhere(identifier, channel)
           });
-        }
 
-        if (user.roleAssignments.length === 0) {
-          await ensureBuyerRole(tx, user.id);
-        }
+          if (!user) {
+            user = await tx.user.create({
+              data: {
+                email: channel === "EMAIL" ? identifier : null,
+                fullName: defaultNameForIdentifier(identifier, channel),
+                phone: channel === "PHONE" ? identifier : null
+              },
+              include: {
+                roleAssignments: true
+              }
+            });
+          }
 
-        return getUserSession(tx, user.id);
-      });
+          if (user.roleAssignments.length === 0) {
+            await ensureBuyerRole(tx, user.id);
+          }
+
+          return getUserSession(tx, user.id);
+        })
+      );
     },
 
     async touchUserLastLogin(userId, loggedInAt) {
-      await prisma.user.update({
-        data: {
-          lastLoginAt: loggedInAt
-        },
-        where: {
-          id: userId
-        }
-      });
+      await withAuthStoreRetry(() =>
+        prisma.user.update({
+          data: {
+            lastLoginAt: loggedInAt
+          },
+          where: {
+            id: userId
+          }
+        })
+      );
     },
 
     async upsertOtpChallenge({
@@ -253,33 +289,39 @@ export function createAuthStore(): AuthStore {
       purpose,
       sentAt
     }) {
-      const challenge = await prisma.otpChallenge.upsert({
-        create: {
-          attempts: 0,
-          channel: mapOtpChannel(channel),
-          codeHash,
-          expiresAt,
-          identifier,
-          lastSentAt: sentAt,
-          maxAttempts,
-          purpose: purpose === "LOGIN" ? PrismaOtpPurpose.LOGIN : PrismaOtpPurpose.LOGIN
-        },
-        update: {
-          attempts: 0,
-          codeHash,
-          consumedAt: null,
-          expiresAt,
-          lastSentAt: sentAt,
-          maxAttempts
-        },
-        where: {
-          identifier_channel_purpose: {
-            channel: mapOtpChannel(channel),
+      const mappedChannel = mapOtpChannel(channel);
+      const mappedPurpose =
+        purpose === "LOGIN" ? PrismaOtpPurpose.LOGIN : PrismaOtpPurpose.LOGIN;
+
+      const challenge = await withAuthStoreRetry(() =>
+        prisma.otpChallenge.upsert({
+          create: {
+            attempts: 0,
+            channel: mappedChannel,
+            codeHash,
+            expiresAt,
             identifier,
-            purpose: purpose === "LOGIN" ? PrismaOtpPurpose.LOGIN : PrismaOtpPurpose.LOGIN
+            lastSentAt: sentAt,
+            maxAttempts,
+            purpose: mappedPurpose
+          },
+          update: {
+            attempts: 0,
+            codeHash,
+            consumedAt: null,
+            expiresAt,
+            lastSentAt: sentAt,
+            maxAttempts
+          },
+          where: {
+            identifier_channel_purpose: {
+              channel: mappedChannel,
+              identifier,
+              purpose: mappedPurpose
+            }
           }
-        }
-      });
+        })
+      );
 
       return mapChallenge(challenge);
     }

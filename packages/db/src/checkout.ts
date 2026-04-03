@@ -43,13 +43,23 @@ const cartItemInclude = {
   }
 } satisfies Prisma.CartItemInclude
 
+const checkoutCartItemInclude = {
+  product: {
+    include: {
+      seller: true
+    }
+  },
+  variant: {
+    include: {
+      inventory: true
+    }
+  }
+} satisfies Prisma.CartItemInclude
+
 const buyableVariantInclude = {
   inventory: true,
   product: {
     include: {
-      images: {
-        orderBy: [{ position: "asc" }, { createdAt: "asc" }]
-      },
       seller: true
     }
   }
@@ -63,6 +73,18 @@ type CartRecord = Prisma.CartGetPayload<{
   include: {
     items: {
       include: typeof cartItemInclude
+    }
+  }
+}>
+
+type CheckoutCartItemRecord = Prisma.CartItemGetPayload<{
+  include: typeof checkoutCartItemInclude
+}>
+
+type CheckoutCartRecord = Prisma.CartGetPayload<{
+  include: {
+    items: {
+      include: typeof checkoutCartItemInclude
     }
   }
 }>
@@ -182,11 +204,10 @@ function assertBuyerUserRole(user: {
   }
 }
 
-async function requireBuyerUser(
-  tx: Prisma.TransactionClient,
+async function getBuyerUser(
   userId: string
 ) {
-  const user = await tx.user.findUnique({
+  const user = await prisma.user.findUnique({
     include: {
       roleAssignments: true
     },
@@ -382,6 +403,27 @@ async function getBuyerCartRecord(
   })
 }
 
+async function getCheckoutCartRecord(
+  tx: Prisma.TransactionClient,
+  buyerId: string
+): Promise<CheckoutCartRecord | null> {
+  return tx.cart.findUnique({
+    include: {
+      items: {
+        include: checkoutCartItemInclude,
+        orderBy: [
+          {
+            createdAt: "asc"
+          }
+        ]
+      }
+    },
+    where: {
+      buyerId
+    }
+  })
+}
+
 function mapBuyerCartItem(item: CartItemRecord): BuyerCartItem {
   const unitPriceMinor = item.variant.priceMinor
   const lineSubtotalMinor =
@@ -444,7 +486,7 @@ function mapBuyerCart(cart: CartRecord | null): BuyerCart {
   }
 }
 
-function assertCartConsistency(items: CartItemRecord[]) {
+function assertCartConsistency(items: CheckoutCartItemRecord[]) {
   if (items.length === 0) {
     throw new CheckoutServiceError("CART_EMPTY", "Cart is empty.", 400)
   }
@@ -479,7 +521,7 @@ function assertCartConsistency(items: CartItemRecord[]) {
   }
 }
 
-function buildCheckoutLineItems(items: CartItemRecord[]): CheckoutLineItem[] {
+function buildCheckoutLineItems(items: CheckoutCartItemRecord[]): CheckoutLineItem[] {
   return items.map((item) => {
     const variant = assertBuyableVariant({
       ...item.variant,
@@ -583,20 +625,7 @@ function parseStoredCheckoutResponse(value: Prisma.JsonValue | null): BuyerCheck
 }
 
 export async function getBuyerCart(input: { userId: string }): Promise<BuyerCart> {
-  const user = await prisma.user.findUnique({
-    include: {
-      roleAssignments: true
-    },
-    where: {
-      id: input.userId
-    }
-  })
-
-  if (!user) {
-    throw new CheckoutServiceError("NOT_FOUND", "Buyer not found.", 404)
-  }
-
-  assertBuyerUserRole(user)
+  await getBuyerUser(input.userId)
 
   return mapBuyerCart(await getBuyerCartRecord(prisma, input.userId))
 }
@@ -604,8 +633,9 @@ export async function getBuyerCart(input: { userId: string }): Promise<BuyerCart
 export async function mutateBuyerCartItem(
   input: MutateBuyerCartItemInput
 ): Promise<BuyerCart> {
+  await getBuyerUser(input.userId)
+
   await prisma.$transaction(async (tx) => {
-    await requireBuyerUser(tx, input.userId)
     const cart = await ensureBuyerCart(tx, input.userId)
     const variant = await getBuyableVariant(tx, input.variantId)
     const currentItem = await tx.cartItem.findUnique({
@@ -622,9 +652,20 @@ export async function mutateBuyerCartItem(
       currentQuantity,
       quantity: input.quantity
     })
-
-    const existingCart = await getBuyerCartRecord(tx, input.userId)
-    const otherItems = existingCart?.items.filter((item) => item.variantId !== input.variantId) ?? []
+    const otherItems = await tx.cartItem.findMany({
+      include: checkoutCartItemInclude,
+      orderBy: [
+        {
+          createdAt: "asc"
+        }
+      ],
+      where: {
+        cartId: cart.id,
+        variantId: {
+          not: input.variantId
+        }
+      }
+    })
 
     if (nextQuantity > 0) {
       const otherSellerId = otherItems[0]?.product.sellerId
@@ -740,12 +781,12 @@ export async function checkoutBuyerCart(
   })
   const now = new Date()
 
+  await getBuyerUser(input.userId)
+
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
       return await prisma.$transaction(
         async (tx) => {
-          await requireBuyerUser(tx, input.userId)
-
           await tx.checkoutIdempotency.deleteMany({
             where: {
               buyerId: input.userId,
@@ -801,7 +842,7 @@ export async function checkoutBuyerCart(
             }
           })
 
-          const cart = await getBuyerCartRecord(tx, input.userId)
+          const cart = await getCheckoutCartRecord(tx, input.userId)
 
           if (!cart) {
             throw new CheckoutServiceError("CART_EMPTY", "Cart is empty.", 400)

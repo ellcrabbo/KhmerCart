@@ -116,8 +116,13 @@ describe("buyer catalog", () => {
       });
 
       const feed = await getBuyerProductFeed();
+      const visible = feed.items.find((item) => item.slug === `buyer-visible-${suffix}`);
 
-      expect(feed.items.some((item) => item.slug === `buyer-visible-${suffix}`)).toBe(true);
+      expect(visible).toBeDefined();
+      expect(visible?.leadVariant.id).toBeDefined();
+      expect(visible?.leadVariant.priceMinor).toBe(3400);
+      expect(visible?.leadVariant.sku).toBe(`BUYER-VIS-${suffix}`);
+      expect(visible?.leadVariant.availableQuantity).toBe(7);
       expect(feed.items.some((item) => item.slug === `buyer-hidden-${suffix}`)).toBe(false);
     } finally {
       await prisma.user.delete({
@@ -177,6 +182,7 @@ describe("buyer catalog", () => {
       expect(detail.disclosures.sellerContact).toBe(user.email);
       expect(detail.disclosures.sellerAddress).toBe("Siem Reap, Cambodia");
       expect(detail.variants).toHaveLength(1);
+      expect(detail.leadVariant.id).toBe(detail.variants[0]?.id);
       expect(detail.variants[0]?.priceMinor).toBe(1599);
       expect(detail.seller.displayName).toContain("Buyer Feed Seller");
     } finally {
