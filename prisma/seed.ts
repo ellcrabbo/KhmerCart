@@ -14,7 +14,7 @@ import {
   ShipmentEventSource,
   ShipmentStatus,
   UserRole
-} from "@khmercart/db/prisma-client";
+} from "../packages/db/generated/prisma/enums";
 import { prisma } from "../packages/db/src/prisma";
 
 type BilingualText = {
