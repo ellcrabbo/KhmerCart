@@ -238,7 +238,9 @@ function resolveFeaturedImage(product: BuyerProductRecord): BuyerCatalogImage | 
 }
 
 function resolveLeadVariant(product: BuyerProductRecord) {
-  const leadVariant = product.variants[0];
+  const leadVariant =
+    product.variants.find((variant) => (variant.inventory?.availableQuantity ?? 0) > 0) ??
+    product.variants[0];
 
   if (!leadVariant || leadVariant.currency === null || leadVariant.priceMinor === null) {
     throw new BuyerCatalogError("NOT_FOUND", "Product is not available for buyers.", 404);
@@ -248,6 +250,28 @@ function resolveLeadVariant(product: BuyerProductRecord) {
     currency: Currency;
     priceMinor: number;
   };
+}
+
+function compareFeedItemsForDisplay(left: BuyerFeedItem, right: BuyerFeedItem): number {
+  const stockPriority = {
+    IN_STOCK: 0,
+    LOW_STOCK: 1,
+    OUT_OF_STOCK: 2
+  } satisfies Record<BuyerStockState, number>;
+
+  const stockDelta = stockPriority[left.stock.state] - stockPriority[right.stock.state];
+
+  if (stockDelta !== 0) {
+    return stockDelta;
+  }
+
+  const quantityDelta = right.stock.availableQuantity - left.stock.availableQuantity;
+
+  if (quantityDelta !== 0) {
+    return quantityDelta;
+  }
+
+  return right.publishedAt.localeCompare(left.publishedAt);
 }
 
 function mapBuyerVariant(
@@ -414,7 +438,7 @@ export async function getBuyerProductFeed(input?: {
       .map((record) => record.category?.trim() ?? "")
       .filter(Boolean)
       .sort((left, right) => left.localeCompare(right)),
-    items: products.map(mapBuyerFeedItem),
+    items: products.map(mapBuyerFeedItem).sort(compareFeedItemsForDisplay),
     nextCursor
   };
 }
