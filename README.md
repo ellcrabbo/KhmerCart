@@ -45,6 +45,7 @@ prisma/
 
    ```bash
    cp .env.example .env.local
+   cp .env.test.example .env.test
    ```
 
 2. Start local infrastructure:
@@ -124,7 +125,24 @@ pnpm --filter @khmercart/admin dev
 
 ## Environment
 
-Copy [`.env.example`](./.env.example) to `.env.local` for local development. The helper DB scripts load `.env.local` first and fall back to `.env` if needed.
+Recommended local layout:
+
+- [`.env.local`](./.env.example): app runtime values for local development or Vercel-pulled values via `vercel env pull`
+- [`.env.test`](./.env.test.example): local Docker/test defaults for Vitest and safe local database workflows
+- [`.env`](./.env.example): legacy fallback only; avoid relying on it for new setup
+
+Setup:
+
+```bash
+cp .env.example .env.local
+cp .env.test.example .env.test
+```
+
+Behavior:
+
+- DB helper scripts like `pnpm db:migrate` load `.env.local` first, then `.env`
+- tests prefer `.env.test.local`, then `.env.test`, then `.env`, then `.env.local`
+- Vercel CLI writes pulled project secrets into `.env.local`
 
 Important variables:
 

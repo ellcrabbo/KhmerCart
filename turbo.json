@@ -8,7 +8,7 @@
     "prettier.config.mjs",
     "tsconfig.base.json"
   ],
-  "globalEnv": ["NODE_VERSION", "DATABASE_URL", "REDIS_URL"],
+  "globalEnv": ["NODE_VERSION", "DATABASE_URL", "REDIS_URL", "AUTH_JWT_SECRET"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
