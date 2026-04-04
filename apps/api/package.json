@@ -5,6 +5,7 @@
     "@khmercart/core": "workspace:*",
     "@khmercart/db": "workspace:*",
     "@khmercart/ui": "workspace:*",
+    "@vercel/analytics": "^2.0.1",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"
