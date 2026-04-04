@@ -14,6 +14,8 @@ type CheckoutRouteContext = {
   }>;
 };
 
+type PaywayResponseRecord = Record<string, unknown>;
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -80,6 +82,9 @@ function renderHtmlPage(input: {
         line-height: 1.7;
       }
       button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         margin-top: 1.5rem;
         border: 0;
         border-radius: 999px;
@@ -92,6 +97,43 @@ function renderHtmlPage(input: {
       }
       button:hover {
         background: #b45309;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.9rem;
+        margin-top: 1.5rem;
+      }
+      .button-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: #d97706;
+        color: white;
+        font-weight: 700;
+        padding: 0.95rem 1.4rem;
+        text-decoration: none;
+      }
+      .button-link:hover {
+        background: #b45309;
+      }
+      .button-link.secondary {
+        background: rgba(217, 119, 6, 0.08);
+        color: #9a3412;
+      }
+      .button-link.secondary:hover {
+        background: rgba(217, 119, 6, 0.16);
+      }
+      pre {
+        margin: 1.5rem 0 0;
+        border-radius: 1rem;
+        background: #1c1917;
+        color: #fafaf9;
+        overflow-x: auto;
+        padding: 1rem;
+        white-space: pre-wrap;
+        word-break: break-all;
       }
       code {
         font-family: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
@@ -132,6 +174,114 @@ function renderErrorPage(input: {
       title: `${input.code} | KhmerCart`
     }),
     input.status
+  );
+}
+
+function readTextValue(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  return normalized ? normalized : null;
+}
+
+function readNestedTextValue(
+  payload: PaywayResponseRecord,
+  paths: string[]
+): string | null {
+  for (const path of paths) {
+    const segments = path.split(".");
+    let current: unknown = payload;
+
+    for (const segment of segments) {
+      if (!current || typeof current !== "object" || Array.isArray(current)) {
+        current = null;
+        break;
+      }
+
+      current = (current as PaywayResponseRecord)[segment];
+    }
+
+    const resolved = readTextValue(current);
+
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return null;
+}
+
+function parsePaywayJsonPayload(rawValue: string): PaywayResponseRecord | null {
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+
+    return parsed as PaywayResponseRecord;
+  } catch {
+    return null;
+  }
+}
+
+function injectBaseHref(html: string, baseHref: string): string {
+  if (/<base\s/i.test(html)) {
+    return html;
+  }
+
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head([^>]*)>/i, `<head$1><base href="${escapeHtml(baseHref)}" />`);
+  }
+
+  return html;
+}
+
+function renderQrFallbackPage(input: {
+  deeplink: string | null;
+  orderId: string;
+  orderNumber: string;
+  qrString: string | null;
+  statusMessage: string | null;
+}): Response {
+  return htmlResponse(
+    renderHtmlPage({
+      body: `
+        <section class="panel">
+          <span class="eyebrow">KhmerCart Payments</span>
+          <h1>Continue in ABA PayWay</h1>
+          <p>
+            PayWay returned a QR checkout for
+            <strong>${escapeHtml(input.orderNumber)}</strong>. Open the checkout in ABA,
+            or use the QR payload below if you need to complete it manually.
+          </p>
+          ${
+            input.statusMessage
+              ? `<p><strong>Status:</strong> ${escapeHtml(input.statusMessage)}</p>`
+              : ""
+          }
+          <div class="actions">
+            ${
+              input.deeplink
+                ? `<a class="button-link" href="${escapeHtml(input.deeplink)}">Open ABA Pay</a>`
+                : ""
+            }
+            <a class="button-link secondary" href="/payments/payway/complete?orderId=${escapeHtml(input.orderId)}">
+              Refresh payment status
+            </a>
+          </div>
+          ${
+            input.qrString
+              ? `<pre><code>${escapeHtml(input.qrString)}</code></pre>`
+              : ""
+          }
+        </section>
+      `,
+      title: `PayWay checkout | ${input.orderNumber}`
+    })
   );
 }
 
@@ -254,41 +404,107 @@ export async function GET(request: Request, context: CheckoutRouteContext) {
     webhookBaseUrl: paymentsConfig.webhookBaseUrl
   });
 
-  const hiddenInputs = Object.entries(purchaseForm.fields)
-    .map(
-      ([name, value]) =>
-        `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}" />`
-    )
-    .join("");
+  const purchaseRequestBody = new URLSearchParams();
 
-  return htmlResponse(
-    renderHtmlPage({
-      body: `
-        <section class="panel">
-          <span class="eyebrow">KhmerCart Payments</span>
-          <h1>Redirecting you to ABA PayWay</h1>
-          <p>
-            We are opening the hosted PayWay checkout for
-            <strong>${escapeHtml(order.orderNumber)}</strong>. If nothing happens in a
-            moment, use the button below.
-          </p>
-          <form id="payway-checkout-form" method="POST" action="${escapeHtml(
-            purchaseForm.actionUrl
-          )}">
-            ${hiddenInputs}
-            <button type="submit">Continue to PayWay</button>
-          </form>
-        </section>
-        <script>
-          window.setTimeout(function () {
-            var form = document.getElementById("payway-checkout-form");
-            if (form) {
-              form.submit();
-            }
-          }, 120);
-        </script>
-      `,
-      title: `PayWay checkout | ${order.orderNumber}`
-    })
-  );
+  for (const [name, value] of Object.entries(purchaseForm.fields)) {
+    purchaseRequestBody.set(name, value);
+  }
+
+  let paywayResponse: Response;
+
+  try {
+    paywayResponse = await fetch(purchaseForm.actionUrl, {
+      body: purchaseRequestBody,
+      cache: "no-store",
+      headers: {
+        accept: "text/html,application/json",
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8"
+      },
+      method: "POST",
+      redirect: "follow"
+    });
+  } catch {
+    return renderErrorPage({
+      code: "PAYWAY_UNAVAILABLE",
+      message: "We could not reach ABA PayWay. Please try again in a moment.",
+      status: 502
+    });
+  }
+
+  const responseText = await paywayResponse.text();
+  const contentType = (paywayResponse.headers.get("content-type") ?? "").toLowerCase();
+  const payload =
+    contentType.includes("application/json") || responseText.trim().startsWith("{")
+      ? parsePaywayJsonPayload(responseText)
+      : null;
+
+  if (payload) {
+    const checkoutQrUrl = readNestedTextValue(payload, [
+      "checkout_qr_url",
+      "checkoutUrl",
+      "checkout_url",
+      "data.checkout_qr_url",
+      "data.checkoutUrl",
+      "data.checkout_url"
+    ]);
+    const deeplink = readNestedTextValue(payload, [
+      "abapay_deeplink",
+      "data.abapay_deeplink",
+      "checkout_deeplink",
+      "data.checkout_deeplink"
+    ]);
+    const qrString = readNestedTextValue(payload, [
+      "qrString",
+      "qr_string",
+      "data.qrString",
+      "data.qr_string"
+    ]);
+    const statusCode = readNestedTextValue(payload, [
+      "status.code",
+      "statusCode",
+      "status_code",
+      "data.status.code"
+    ]);
+    const statusMessage = readNestedTextValue(payload, [
+      "status.message",
+      "message",
+      "description",
+      "data.status.message"
+    ]);
+
+    if (checkoutQrUrl) {
+      return Response.redirect(checkoutQrUrl, 302);
+    }
+
+    if (paywayResponse.ok && (deeplink || qrString)) {
+      return renderQrFallbackPage({
+        deeplink,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        qrString,
+        statusMessage
+      });
+    }
+
+    return renderErrorPage({
+      code: statusCode ? `PAYWAY_${statusCode}` : "PAYWAY_RESPONSE_ERROR",
+      message:
+        statusMessage ??
+        "ABA PayWay returned an unexpected purchase response for this order.",
+      status: paywayResponse.ok ? 502 : paywayResponse.status
+    });
+  }
+
+  if (contentType.includes("text/html") || /<!doctype html|<html/i.test(responseText)) {
+    return htmlResponse(
+      injectBaseHref(responseText, `${new URL(purchaseForm.actionUrl).origin}/`)
+    );
+  }
+
+  return renderErrorPage({
+    code: "PAYWAY_RESPONSE_ERROR",
+    message:
+      "ABA PayWay returned an unexpected checkout payload. Please try again in a moment.",
+    status: paywayResponse.ok ? 502 : paywayResponse.status
+  });
 }

@@ -240,18 +240,36 @@ describe("PayWay provider", () => {
     ).toBe(true);
   });
 
-  it("renders a real PayWay checkout handoff form when credentials are configured", async () => {
+  it("redirects buyers to PayWay's hosted QR checkout when the purchase API returns JSON", async () => {
     const suffix = crypto.randomUUID().slice(0, 8);
     const previousMerchantId = process.env.PAYWAY_MERCHANT_ID;
     const previousApiKey = process.env.PAYWAY_API_KEY;
     const previousBaseUrl = process.env.PAYWAY_BASE_URL;
     const previousWebhookBaseUrl = process.env.WEBHOOK_BASE_URL;
     const fixture = await createCheckoutFixture(suffix);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          checkout_qr_url: "https://checkout-sandbox.payway.com.kh/checkout-qr/test",
+          status: {
+            code: "00",
+            message: "Success!"
+          }
+        }),
+        {
+          headers: {
+            "content-type": "application/json"
+          },
+          status: 200
+        }
+      )
+    );
 
     process.env.PAYWAY_MERCHANT_ID = "ec000002";
     process.env.PAYWAY_API_KEY = "sandbox-public-key";
     delete process.env.PAYWAY_BASE_URL;
     process.env.WEBHOOK_BASE_URL = "https://api.khmercart.shop";
+    vi.stubGlobal("fetch", fetchMock);
 
     try {
       const response = await paywayCheckoutGet(
@@ -263,19 +281,28 @@ describe("PayWay provider", () => {
         }
       );
 
-      expect(response.status).toBe(200);
-
-      const html = await response.text();
-
-      expect(html).toContain("Redirecting you to ABA PayWay");
-      expect(html).toContain(
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(
+        "https://checkout-sandbox.payway.com.kh/checkout-qr/test"
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
         "https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase"
       );
-      expect(html).toContain('name="merchant_id" value="ec000002"');
-      expect(html).toContain(`name="tran_id" value="${fixture.order.orderNumber}"`);
-      expect(html).toContain('name="return_url" value="');
-      expect(html).toContain('name="continue_success_url" value="https://api.khmercart.shop/payments/payway/complete');
+      expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
+      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
+        "merchant_id=ec000002"
+      );
+      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
+        `tran_id=${fixture.order.orderNumber}`
+      );
+      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("return_url=");
+      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
+        "continue_success_url="
+      );
     } finally {
+      vi.unstubAllGlobals();
+
       if (previousMerchantId) {
         process.env.PAYWAY_MERCHANT_ID = previousMerchantId;
       } else {
