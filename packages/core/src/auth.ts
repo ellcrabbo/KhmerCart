@@ -50,6 +50,7 @@ export type OtpDeliveryResult = {
 };
 
 export interface OtpDeliveryService {
+  supportsChannel(channel: OtpChannel): boolean;
   deliverOtp(input: OtpDeliveryRequest): Promise<OtpDeliveryResult>;
 }
 
@@ -390,6 +391,9 @@ export function createOtpDeliveryService(
   const resendEmail = readResendEmailConfig(env);
 
   return {
+    supportsChannel(channel) {
+      return channel === "PHONE" ? Boolean(twilioSms) : Boolean(resendEmail);
+    },
     async deliverOtp(input) {
       if (input.channel === "PHONE") {
         if (!twilioSms) {
@@ -631,6 +635,21 @@ export async function requestOtpLogin(
   const now = input.now ?? new Date();
   const identifier = normalizeIdentifier(input.identifier);
   const channel = detectOtpChannel(identifier);
+
+  if (config.otpProvider !== OTP_PROVIDER_DEV_STUB && channel === "PHONE") {
+    if (!deliveryService?.supportsChannel("PHONE")) {
+      throw new AuthError("BAD_REQUEST", "Phone sign-in is disabled. Use email instead.", 400);
+    }
+  }
+
+  if (
+    config.otpProvider !== OTP_PROVIDER_DEV_STUB &&
+    channel === "EMAIL" &&
+    !deliveryService?.supportsChannel("EMAIL")
+  ) {
+    throw new AuthError("OTP_DELIVERY_UNAVAILABLE", "Email OTP delivery is not configured.", 503);
+  }
+
   const rateLimit = await store.consumeRateLimit({
     key: `otp:request:${channel}:${identifier}`,
     limit: config.otpRequestLimit,

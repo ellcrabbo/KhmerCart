@@ -377,6 +377,37 @@ describe("OTP auth flow", () => {
     });
   });
 
+  it("hard-rejects phone sign-in when only email delivery is configured", async () => {
+    const store = new MemoryAuthStore();
+    const delivery = createOtpDeliveryService(
+      {
+        OTP_PROVIDER: "REAL",
+        RESEND_API_KEY: "re_test_123",
+        RESEND_FROM_EMAIL: "KhmerCart <noreply@khmercart.shop>"
+      },
+      { fetch: vi.fn<typeof fetch>() }
+    );
+
+    await expect(
+      requestOtpLogin(
+        store,
+        {
+          ...baseConfig,
+          otpProvider: "REAL"
+        },
+        {
+          identifier: "+85512345678",
+          now: new Date("2099-03-29T12:56:00.000Z")
+        },
+        delivery
+      )
+    ).rejects.toMatchObject<AuthError>({
+      code: "BAD_REQUEST",
+      message: "Phone sign-in is disabled. Use email instead.",
+      status: 400
+    });
+  });
+
   it("preserves seeded roles in issued sessions", async () => {
     const store = new MemoryAuthStore();
 
