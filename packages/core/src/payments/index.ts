@@ -1,6 +1,13 @@
 import type { ExternalPaymentProvider, PaymentAdapter } from "./PaymentAdapter";
 import { createBakongAdapter } from "./providers/bakong";
-import { createPaywayAdapter } from "./providers/payway";
+import {
+  buildPaywayPurchaseForm,
+  createPaywayAdapter,
+  createPaywayWebhookSignature,
+  isPaywayConfigured,
+  resolvePaywayPurchaseUrl,
+  verifyPaywayWebhookSignature
+} from "./providers/payway";
 import { createToanchetAdapter } from "./providers/toanchet";
 import { createWingAdapter } from "./providers/wing";
 import { readPaymentsConfig } from "./config";
@@ -8,6 +15,13 @@ import { readPaymentsConfig } from "./config";
 export * from "./config";
 export * from "./PaymentAdapter";
 export { createHmacSignature } from "./providers/shared";
+export {
+  buildPaywayPurchaseForm,
+  createPaywayWebhookSignature,
+  isPaywayConfigured,
+  resolvePaywayPurchaseUrl,
+  verifyPaywayWebhookSignature
+};
 
 export function createPaymentAdapter(
   provider: ExternalPaymentProvider,

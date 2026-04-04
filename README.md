@@ -167,8 +167,25 @@ Important variables:
 - `S3_BUCKET`
 - `S3_KEY`
 - `S3_SECRET`
+- `WEBHOOK_BASE_URL`
+- `PAYWAY_BASE_URL`
+- `PAYWAY_MERCHANT_ID`
+- `PAYWAY_API_KEY`
 
 The buyer app defaults to English and supports locale switching between English and Khmer.
+
+PayWay notes:
+
+- `PAYWAY_BASE_URL` should be the PayWay checkout host, not a fabricated local URL.
+  - Sandbox: `https://checkout-sandbox.payway.com.kh`
+  - Production: `https://checkout.payway.com.kh`
+- `PAYWAY_API_KEY` is the PayWay HMAC signing key labeled as the `Public Key` in ABA’s merchant credential email.
+- `PAYWAY_MERCHANT_ID` is the merchant id from the same credential bundle.
+- `PAYWAY_WEBHOOK_SECRET` is optional, but if ABA has enabled signed pushbacks for your profile, set it so `/api/webhooks/payway` can verify `x-payway-hmac-sha512`.
+- KhmerCart now opens PayWay through an API-domain handoff page that auto-posts the official purchase form, then uses:
+  - `/api/webhooks/payway` for PayWay pushback notifications
+  - `/payments/payway/complete` for the browser success return
+  - `/payments/payway/cancel` for browser cancellations
 
 Real OTP delivery:
 

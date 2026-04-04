@@ -168,7 +168,8 @@ function mapProviderStatusToPaymentStatus(status: string): PaymentStatus {
     normalizedStatus === "SUCCESS" ||
     normalizedStatus === "SUCCEEDED" ||
     normalizedStatus === "SETTLED" ||
-    normalizedStatus === "COMPLETED"
+    normalizedStatus === "COMPLETED" ||
+    normalizedStatus === "REFUNDED"
   ) {
     return "SUCCEEDED";
   }
