@@ -5,8 +5,9 @@ import {
   readAuthConfig
 } from "@khmercart/core/auth";
 import { createAuthStore } from "@khmercart/db/auth-store";
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { jsonErrorResponse, readJsonBody } from "../../_lib/route";
+import { getClientIpAddress, jsonErrorResponse, readJsonBody } from "../../_lib/route";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ type RequestOtpBody = {
   identifier?: string;
 };
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await readJsonBody<RequestOtpBody>(request);
 
@@ -26,7 +27,8 @@ export async function POST(request: Request) {
       createAuthStore(),
       readAuthConfig(process.env),
       {
-        identifier: body.identifier
+        identifier: body.identifier,
+        ipAddress: getClientIpAddress(request)
       },
       createOtpDeliveryService(process.env)
     );

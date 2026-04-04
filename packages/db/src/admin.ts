@@ -1,9 +1,11 @@
 import { formatDisputeReason, formatDisputeStatus, formatKycStatus } from "@khmercart/core";
+import type { AuthConfig } from "@khmercart/core/auth";
 import {
   DisputeStatus,
   Prisma,
   ProductModerationStatus,
-  ProductStatus
+  ProductStatus,
+  UserRole
 } from "./prisma-client";
 import type { DisputeReason, KycStatus } from "./prisma-client";
 import { prisma } from "./prisma";
@@ -81,8 +83,99 @@ export type AdminAuditLogEntry = {
   id: string;
 };
 
+export type AdminUserDirectoryEntry = {
+  createdAt: string;
+  email: string | null;
+  fullName: string;
+  id: string;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  phone: string | null;
+  roles: UserRole[];
+  sellerProfile: {
+    displayName: string;
+    id: string;
+    kycStatus: KycStatus;
+    slug: string;
+  } | null;
+};
+
+export type AdminOtpBucketEntry = {
+  hits: number;
+  id: string;
+  lastSeenAt: string;
+  limit: number;
+  phase: "REQUEST" | "VERIFY";
+  scope: "IDENTIFIER" | "IP";
+  target: string;
+  windowStartedAt: string;
+};
+
+export type AdminOtpChallengeEntry = {
+  attempts: number;
+  channel: "EMAIL" | "PHONE";
+  consumedAt: string | null;
+  expiresAt: string;
+  identifier: string;
+  lastSentAt: string;
+  locked: boolean;
+};
+
+export type AdminOtpAbuseOverview = {
+  alertLevel: "NORMAL" | "ELEVATED" | "HOT";
+  alertMessage: string;
+  blockedBuckets: AdminOtpBucketEntry[];
+  recentChallenges: AdminOtpChallengeEntry[];
+  sentLastDay: number;
+  sentLastHour: number;
+  topBuckets: AdminOtpBucketEntry[];
+  unresolvedChallenges: number;
+};
+
 function serializeDate(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
+}
+
+function orderedRoles(roles: Iterable<UserRole>): UserRole[] {
+  const sortOrder: Record<UserRole, number> = {
+    ADMIN: 0,
+    SELLER: 1,
+    BUYER: 2
+  };
+
+  return [...roles].sort((left, right) => sortOrder[left] - sortOrder[right]);
+}
+
+function normalizeEmailAddress(value: string): string {
+  const normalized = value.trim().toLowerCase();
+
+  if (!normalized) {
+    throw new SellerServiceError("BAD_REQUEST", "Email is required.", 400);
+  }
+
+  if (!normalized.includes("@")) {
+    throw new SellerServiceError("BAD_REQUEST", "Email must be valid.", 400);
+  }
+
+  return normalized;
+}
+
+function uniqueRoles(roles: string[]): UserRole[] {
+  const validRoles = roles.filter((role): role is UserRole =>
+    role === UserRole.ADMIN || role === UserRole.BUYER || role === UserRole.SELLER
+  );
+
+  if (validRoles.length !== roles.length) {
+    throw new SellerServiceError("BAD_REQUEST", "Roles must be ADMIN, BUYER, or SELLER.", 400);
+  }
+
+  const deduped = orderedRoles(new Set(validRoles));
+
+  if (deduped.length === 0) {
+    throw new SellerServiceError("BAD_REQUEST", "At least one role is required.", 400);
+  }
+
+  return deduped;
 }
 
 async function recordAuditLog(
@@ -129,6 +222,38 @@ function productSnapshot(product: {
     publishedAt: serializeDate(product.publishedAt),
     sellerId: product.sellerId,
     status: product.status
+  } satisfies Prisma.InputJsonValue;
+}
+
+function userAccessSnapshot(user: {
+  email: string | null;
+  fullName: string;
+  id: string;
+  isActive: boolean;
+  phone: string | null;
+  roleAssignments: Array<{ role: UserRole }>;
+  sellerProfile: {
+    displayName: string;
+    id: string;
+    kycStatus: KycStatus;
+    slug: string;
+  } | null;
+}) {
+  return {
+    email: user.email,
+    fullName: user.fullName,
+    id: user.id,
+    isActive: user.isActive,
+    phone: user.phone,
+    roles: orderedRoles(user.roleAssignments.map((assignment) => assignment.role)),
+    sellerProfile: user.sellerProfile
+      ? {
+          displayName: user.sellerProfile.displayName,
+          id: user.sellerProfile.id,
+          kycStatus: user.sellerProfile.kycStatus,
+          slug: user.sellerProfile.slug
+        }
+      : null
   } satisfies Prisma.InputJsonValue;
 }
 
@@ -495,6 +620,351 @@ export async function listAuditLogs(limit = 80): Promise<AdminAuditLogEntry[]> {
     entityType: entry.entityType,
     id: entry.id
   }));
+}
+
+export async function listUserDirectory(limit = 120): Promise<AdminUserDirectoryEntry[]> {
+  const users = await prisma.user.findMany({
+    include: {
+      roleAssignments: true,
+      sellerProfile: true
+    },
+    orderBy: [{ lastLoginAt: "desc" }, { createdAt: "desc" }],
+    take: limit
+  });
+
+  return users.map((user) => ({
+    createdAt: user.createdAt.toISOString(),
+    email: user.email,
+    fullName: user.fullName,
+    id: user.id,
+    isActive: user.isActive,
+    lastLoginAt: serializeDate(user.lastLoginAt),
+    phone: user.phone,
+    roles: orderedRoles(user.roleAssignments.map((assignment) => assignment.role)),
+    sellerProfile: user.sellerProfile
+      ? {
+          displayName: user.sellerProfile.displayName,
+          id: user.sellerProfile.id,
+          kycStatus: user.sellerProfile.kycStatus,
+          slug: user.sellerProfile.slug
+        }
+      : null
+  }));
+}
+
+export async function updateUserAccess(input: {
+  actorUserId: string;
+  email: string;
+  ipAddress?: string | null;
+  roles: string[];
+  userAgent?: string | null;
+  userId: string;
+}): Promise<AdminUserDirectoryEntry> {
+  const email = normalizeEmailAddress(input.email);
+  const roles = uniqueRoles(input.roles);
+
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      include: {
+        roleAssignments: true,
+        sellerProfile: true
+      },
+      where: {
+        id: input.userId
+      }
+    });
+
+    if (!user) {
+      throw new SellerServiceError("NOT_FOUND", "User not found.", 404);
+    }
+
+    if (roles.includes(UserRole.SELLER) && !user.sellerProfile) {
+      throw new SellerServiceError(
+        "BAD_REQUEST",
+        "Create or approve a seller profile before granting seller access.",
+        400
+      );
+    }
+
+    const conflictingUser = await tx.user.findFirst({
+      select: {
+        id: true
+      },
+      where: {
+        email,
+        id: {
+          not: user.id
+        }
+      }
+    });
+
+    if (conflictingUser) {
+      throw new SellerServiceError(
+        "CONFLICT",
+        "That email address is already assigned to another user.",
+        409
+      );
+    }
+
+    const currentRoles = new Set(user.roleAssignments.map((assignment) => assignment.role));
+    const nextRoles = new Set(roles);
+
+    if (currentRoles.has(UserRole.ADMIN) && !nextRoles.has(UserRole.ADMIN)) {
+      const adminCount = await tx.userRoleAssignment.count({
+        where: {
+          role: UserRole.ADMIN
+        }
+      });
+
+      if (adminCount <= 1) {
+        throw new SellerServiceError(
+          "BAD_REQUEST",
+          "You cannot remove admin access from the last admin account.",
+          400
+        );
+      }
+    }
+
+    const removedRoles = [...currentRoles].filter((role) => !nextRoles.has(role));
+    const addedRoles = [...nextRoles].filter((role) => !currentRoles.has(role));
+
+    await tx.user.update({
+      data: {
+        email
+      },
+      where: {
+        id: user.id
+      }
+    });
+
+    if (removedRoles.length > 0) {
+      await tx.userRoleAssignment.deleteMany({
+        where: {
+          role: {
+            in: removedRoles
+          },
+          userId: user.id
+        }
+      });
+    }
+
+    if (addedRoles.length > 0) {
+      await tx.userRoleAssignment.createMany({
+        data: addedRoles.map((role) => ({
+          role,
+          userId: user.id
+        })),
+        skipDuplicates: true
+      });
+    }
+
+    const updatedUser = await tx.user.findUniqueOrThrow({
+      include: {
+        roleAssignments: true,
+        sellerProfile: true
+      },
+      where: {
+        id: user.id
+      }
+    });
+
+    await recordAuditLog(tx, {
+      action: "USER_ACCESS_UPDATED",
+      actorUserId: input.actorUserId,
+      afterData: userAccessSnapshot(updatedUser),
+      beforeData: userAccessSnapshot(user),
+      entityId: updatedUser.id,
+      entityType: "User",
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent
+    });
+
+    return {
+      createdAt: updatedUser.createdAt.toISOString(),
+      email: updatedUser.email,
+      fullName: updatedUser.fullName,
+      id: updatedUser.id,
+      isActive: updatedUser.isActive,
+      lastLoginAt: serializeDate(updatedUser.lastLoginAt),
+      phone: updatedUser.phone,
+      roles: orderedRoles(updatedUser.roleAssignments.map((assignment) => assignment.role)),
+      sellerProfile: updatedUser.sellerProfile
+        ? {
+            displayName: updatedUser.sellerProfile.displayName,
+            id: updatedUser.sellerProfile.id,
+            kycStatus: updatedUser.sellerProfile.kycStatus,
+            slug: updatedUser.sellerProfile.slug
+          }
+        : null
+    };
+  });
+}
+
+function parseOtpRateLimitKey(key: string): {
+  channel: "EMAIL" | "PHONE";
+  phase: "REQUEST" | "VERIFY";
+  scope: "IDENTIFIER" | "IP";
+  target: string;
+} | null {
+  const parts = key.split(":");
+
+  if (parts[0] !== "otp") {
+    return null;
+  }
+
+  if (parts[1] !== "request" && parts[1] !== "verify") {
+    return null;
+  }
+
+  const phase = parts[1] === "request" ? "REQUEST" : "VERIFY";
+
+  if (parts[2] === "ip") {
+    const channel = parts[3];
+    const target = parts.slice(4).join(":");
+
+    if ((channel !== "EMAIL" && channel !== "PHONE") || target.length === 0) {
+      return null;
+    }
+
+    return {
+      channel,
+      phase,
+      scope: "IP",
+      target
+    };
+  }
+
+  const channel = parts[2];
+  const target = parts.slice(3).join(":");
+
+  if ((channel !== "EMAIL" && channel !== "PHONE") || target.length === 0) {
+    return null;
+  }
+
+  return {
+    channel,
+    phase,
+    scope: "IDENTIFIER",
+    target
+  };
+}
+
+function resolveOtpBucketLimit(
+  config: Pick<AuthConfig, "otpRequestIpLimit" | "otpRequestLimit" | "otpVerifyIpLimit" | "otpVerifyLimit">,
+  bucket: { phase: "REQUEST" | "VERIFY"; scope: "IDENTIFIER" | "IP" }
+): number {
+  if (bucket.phase === "REQUEST") {
+    return bucket.scope === "IP" ? config.otpRequestIpLimit : config.otpRequestLimit;
+  }
+
+  return bucket.scope === "IP" ? config.otpVerifyIpLimit : config.otpVerifyLimit;
+}
+
+export async function getOtpAbuseOverview(
+  config: Pick<AuthConfig, "otpRequestIpLimit" | "otpRequestLimit" | "otpVerifyIpLimit" | "otpVerifyLimit">
+): Promise<AdminOtpAbuseOverview> {
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+  const [buckets, recentChallenges, sentLastHour, sentLastDay, unresolvedChallenges] =
+    await Promise.all([
+      prisma.rateLimitBucket.findMany({
+        orderBy: [{ hits: "desc" }, { updatedAt: "desc" }],
+        where: {
+          key: {
+            startsWith: "otp:"
+          },
+          updatedAt: {
+            gte: oneDayAgo
+          }
+        },
+        take: 40
+      }),
+      prisma.otpChallenge.findMany({
+        orderBy: {
+          lastSentAt: "desc"
+        },
+        take: 12
+      }),
+      prisma.otpChallenge.count({
+        where: {
+          lastSentAt: {
+            gte: oneHourAgo
+          }
+        }
+      }),
+      prisma.otpChallenge.count({
+        where: {
+          lastSentAt: {
+            gte: oneDayAgo
+          }
+        }
+      }),
+      prisma.otpChallenge.count({
+        where: {
+          consumedAt: null,
+          expiresAt: {
+            gt: now
+          }
+        }
+      })
+    ]);
+
+  const parsedBuckets = buckets
+    .map((bucket) => {
+      const parsed = parseOtpRateLimitKey(bucket.key);
+
+      if (!parsed) {
+        return null;
+      }
+
+      return {
+        hits: bucket.hits,
+        id: bucket.id,
+        lastSeenAt: bucket.updatedAt.toISOString(),
+        limit: resolveOtpBucketLimit(config, parsed),
+        phase: parsed.phase,
+        scope: parsed.scope,
+        target: parsed.target,
+        windowStartedAt: bucket.windowStartedAt.toISOString()
+      } satisfies AdminOtpBucketEntry;
+    })
+    .filter((bucket): bucket is AdminOtpBucketEntry => Boolean(bucket));
+  const blockedBuckets = parsedBuckets.filter((bucket) => bucket.hits >= bucket.limit);
+  const elevatedBuckets = parsedBuckets.filter((bucket) => bucket.hits >= Math.max(bucket.limit - 1, 1));
+
+  let alertLevel: AdminOtpAbuseOverview["alertLevel"] = "NORMAL";
+  let alertMessage = "No active OTP spikes are currently being tracked.";
+
+  if (blockedBuckets.length >= 3 || blockedBuckets.some((bucket) => bucket.hits >= bucket.limit + 3)) {
+    alertLevel = "HOT";
+    alertMessage = `${blockedBuckets.length} OTP bucket${blockedBuckets.length === 1 ? " has" : "s have"} hit the live limit in the last 24 hours.`;
+  } else if (blockedBuckets.length > 0 || elevatedBuckets.length >= 3) {
+    alertLevel = "ELEVATED";
+    alertMessage = blockedBuckets.length
+      ? `${blockedBuckets.length} OTP bucket${blockedBuckets.length === 1 ? " is" : "s are"} currently rate-limited.`
+      : "OTP traffic is elevated and approaching current rate limits.";
+  }
+
+  return {
+    alertLevel,
+    alertMessage,
+    blockedBuckets: blockedBuckets.slice(0, 8),
+    recentChallenges: recentChallenges.map((challenge) => ({
+      attempts: challenge.attempts,
+      channel: challenge.channel,
+      consumedAt: serializeDate(challenge.consumedAt),
+      expiresAt: challenge.expiresAt.toISOString(),
+      identifier: challenge.identifier,
+      lastSentAt: challenge.lastSentAt.toISOString(),
+      locked: challenge.attempts >= challenge.maxAttempts
+    })),
+    sentLastDay,
+    sentLastHour,
+    topBuckets: parsedBuckets.slice(0, 8),
+    unresolvedChallenges
+  };
 }
 
 export function formatModerationStatus(status: ProductModerationStatus): string {

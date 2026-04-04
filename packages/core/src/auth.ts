@@ -30,9 +30,11 @@ export type AuthSession = {
 export type AuthConfig = {
   jwtSecret: string;
   otpProvider: string;
+  otpRequestIpLimit: number;
   otpRequestLimit: number;
   otpRateLimitWindowSeconds: number;
   otpTtlSeconds: number;
+  otpVerifyIpLimit: number;
   otpVerifyLimit: number;
   sessionTtlSeconds: number;
 };
@@ -75,6 +77,7 @@ export type RateLimitResult = {
 
 export type RequestOtpInput = {
   identifier: string;
+  ipAddress?: string | null;
   now?: Date;
 };
 
@@ -91,6 +94,7 @@ export type RequestOtpResult = {
 export type VerifyOtpInput = {
   code: string;
   identifier: string;
+  ipAddress?: string | null;
   now?: Date;
 };
 
@@ -180,12 +184,14 @@ export function readAuthConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig
   return {
     jwtSecret: env.AUTH_JWT_SECRET ?? "dev-auth-secret-change-me",
     otpProvider: env.OTP_PROVIDER?.trim() || OTP_PROVIDER_DEV_STUB,
+    otpRequestIpLimit: parsePositiveInteger(env.AUTH_OTP_REQUEST_IP_LIMIT, 20),
     otpRequestLimit: parsePositiveInteger(env.AUTH_OTP_REQUEST_LIMIT, 5),
     otpRateLimitWindowSeconds: parsePositiveInteger(
       env.AUTH_OTP_RATE_LIMIT_WINDOW_SECONDS,
       300
     ),
     otpTtlSeconds: parsePositiveInteger(env.AUTH_OTP_TTL_SECONDS, 300),
+    otpVerifyIpLimit: parsePositiveInteger(env.AUTH_OTP_VERIFY_IP_LIMIT, 20),
     otpVerifyLimit: parsePositiveInteger(env.AUTH_OTP_VERIFY_LIMIT, 5),
     sessionTtlSeconds: parsePositiveInteger(env.AUTH_SESSION_TTL_SECONDS, 60 * 60 * 24 * 7)
   };
@@ -214,6 +220,12 @@ type ResendEmailConfig = {
   fromEmail: string;
 };
 
+type OtpEmailContent = {
+  html: string;
+  subject: string;
+  text: string;
+};
+
 function readTwilioSmsConfig(env: NodeJS.ProcessEnv): TwilioSmsConfig | null {
   const accountSid = env.TWILIO_ACCOUNT_SID?.trim();
   const authToken = env.TWILIO_AUTH_TOKEN?.trim();
@@ -238,7 +250,7 @@ function readTwilioSmsConfig(env: NodeJS.ProcessEnv): TwilioSmsConfig | null {
 
 function readResendEmailConfig(env: NodeJS.ProcessEnv): ResendEmailConfig | null {
   const apiKey = env.RESEND_API_KEY?.trim();
-  const fromEmail = env.RESEND_FROM_EMAIL?.trim();
+  const fromEmail = normalizeResendFromEmail(env.RESEND_FROM_EMAIL?.trim());
 
   if (!apiKey || !fromEmail) {
     return null;
@@ -248,6 +260,14 @@ function readResendEmailConfig(env: NodeJS.ProcessEnv): ResendEmailConfig | null
     apiKey,
     fromEmail
   };
+}
+
+function normalizeResendFromEmail(fromEmail: string | undefined): string | null {
+  if (!fromEmail) {
+    return null;
+  }
+
+  return fromEmail.includes("<") ? fromEmail : `KhmerCart <${fromEmail}>`;
 }
 
 function formatOtpTtlMinutes(expiresAt: Date): number {
@@ -260,6 +280,65 @@ function buildOtpMessage(input: OtpDeliveryRequest): string {
   return `Your KhmerCart verification code is ${input.code}. It expires in ${minutes} minute${
     minutes === 1 ? "" : "s"
   }.`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function buildOtpEmailContent(input: OtpDeliveryRequest): OtpEmailContent {
+  const minutes = formatOtpTtlMinutes(input.expiresAt);
+  const subject = "Your KhmerCart sign-in code";
+  const plainText = [
+    `Your KhmerCart sign-in code is ${input.code}.`,
+    "",
+    `It expires in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+    "",
+    "Enter this code in the KhmerCart sign-in screen to finish logging in.",
+    "If you did not request this code, you can safely ignore this email."
+  ].join("\n");
+  const html = `
+    <div style="background:#f6f3ee;padding:32px 16px;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1c1917;">
+      <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid rgba(28,25,23,0.08);border-radius:24px;overflow:hidden;box-shadow:0 24px 60px rgba(28,25,23,0.08);">
+        <div style="padding:28px 32px;background:linear-gradient(135deg,#1c1917 0%,#44403c 100%);color:#fafaf9;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.32em;text-transform:uppercase;opacity:0.76;">KhmerCart</div>
+          <h1 style="margin:14px 0 0;font-size:28px;line-height:1.1;font-weight:700;">Your sign-in code</h1>
+          <p style="margin:12px 0 0;font-size:15px;line-height:1.7;opacity:0.9;">
+            Finish signing in with the one-time code below.
+          </p>
+        </div>
+        <div style="padding:32px;">
+          <p style="margin:0;font-size:15px;line-height:1.8;color:#44403c;">
+            Enter this code in the KhmerCart sign-in screen. It expires in
+            <strong>${minutes} minute${minutes === 1 ? "" : "s"}</strong>.
+          </p>
+          <div style="margin:24px 0;padding:18px 20px;border-radius:20px;border:1px solid rgba(217,119,6,0.18);background:#fffbeb;text-align:center;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.28em;text-transform:uppercase;color:#b45309;">Verification code</div>
+            <div style="margin-top:12px;font-size:34px;letter-spacing:0.36em;font-weight:700;color:#1c1917;">${escapeHtml(
+              input.code
+            )}</div>
+          </div>
+          <p style="margin:0;font-size:14px;line-height:1.8;color:#57534e;">
+            If you didn't request this code, you can ignore this email. The code only works once and will expire automatically.
+          </p>
+          <p style="margin:18px 0 0;font-size:13px;line-height:1.8;color:#78716c;">
+            Need help? Reply to this email or contact the KhmerCart team.
+          </p>
+        </div>
+      </div>
+    </div>
+  `.trim();
+
+  return {
+    html,
+    subject,
+    text: plainText
+  };
 }
 
 async function readProviderErrorMessage(response: Response): Promise<string | null> {
@@ -344,12 +423,13 @@ async function deliverOtpByResend(
   input: OtpDeliveryRequest,
   userAgent: string
 ): Promise<OtpDeliveryResult> {
+  const email = buildOtpEmailContent(input);
   const response = await fetchImpl("https://api.resend.com/emails", {
     body: JSON.stringify({
       from: config.fromEmail,
-      html: `<p>${buildOtpMessage(input)}</p>`,
-      subject: "Your KhmerCart verification code",
-      text: buildOtpMessage(input),
+      html: email.html,
+      subject: email.subject,
+      text: email.text,
       to: [input.identifier]
     }),
     headers: {
@@ -635,6 +715,7 @@ export async function requestOtpLogin(
   const now = input.now ?? new Date();
   const identifier = normalizeIdentifier(input.identifier);
   const channel = detectOtpChannel(identifier);
+  const ipAddress = input.ipAddress?.trim() || null;
 
   if (config.otpProvider !== OTP_PROVIDER_DEV_STUB && channel === "PHONE") {
     if (!deliveryService?.supportsChannel("PHONE")) {
@@ -664,6 +745,24 @@ export async function requestOtpLogin(
       429,
       rateLimit.retryAfterSeconds
     );
+  }
+
+  if (ipAddress) {
+    const ipRateLimit = await store.consumeRateLimit({
+      key: `otp:request:ip:${channel}:${ipAddress}`,
+      limit: config.otpRequestIpLimit,
+      now,
+      windowSeconds: config.otpRateLimitWindowSeconds
+    });
+
+    if (!ipRateLimit.allowed) {
+      throw new AuthError(
+        "RATE_LIMITED",
+        "Too many OTP requests from this network. Please try again later.",
+        429,
+        ipRateLimit.retryAfterSeconds
+      );
+    }
   }
 
   const code = generateOtpCode();
@@ -730,6 +829,7 @@ export async function verifyOtpLogin(
   const now = input.now ?? new Date();
   const identifier = normalizeIdentifier(input.identifier);
   const channel = detectOtpChannel(identifier);
+  const ipAddress = input.ipAddress?.trim() || null;
   const rateLimit = await store.consumeRateLimit({
     key: `otp:verify:${channel}:${identifier}`,
     limit: config.otpVerifyLimit,
@@ -744,6 +844,24 @@ export async function verifyOtpLogin(
       429,
       rateLimit.retryAfterSeconds
     );
+  }
+
+  if (ipAddress) {
+    const ipRateLimit = await store.consumeRateLimit({
+      key: `otp:verify:ip:${channel}:${ipAddress}`,
+      limit: config.otpVerifyIpLimit,
+      now,
+      windowSeconds: config.otpRateLimitWindowSeconds
+    });
+
+    if (!ipRateLimit.allowed) {
+      throw new AuthError(
+        "RATE_LIMITED",
+        "Too many OTP verification attempts from this network. Please try again later.",
+        429,
+        ipRateLimit.retryAfterSeconds
+      );
+    }
   }
 
   const challenge = await store.findOtpChallenge(identifier, channel, OTP_PURPOSE_LOGIN);

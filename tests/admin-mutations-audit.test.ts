@@ -2,7 +2,8 @@ import {
   decideDispute,
   decideProductModeration,
   decideSellerApproval,
-  prisma
+  prisma,
+  updateUserAccess
 } from "@khmercart/db";
 import {
   Currency,
@@ -396,6 +397,48 @@ describe("admin audit logging", () => {
           actorUserId: adminUser.id,
           entityId: dispute.id,
           entityType: "Dispute"
+        }
+      });
+
+      expect(auditLog).not.toBeNull();
+    } finally {
+      await cleanupRecords(suffix, startedAt);
+    }
+  });
+
+  it("writes an audit log for user access updates", async () => {
+    const startedAt = new Date();
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const adminUser = await createUserWithRole({
+      email: `admin-access-${suffix}@khmercart.local`,
+      fullName: `Admin Access ${suffix}`,
+      phone: `+85571${suffix.slice(0, 6).replace(/\D/g, "7")}`,
+      role: UserRole.ADMIN
+    });
+    const managedUser = await createUserWithRole({
+      email: `buyer-access-${suffix}@khmercart.local`,
+      fullName: `Buyer Access ${suffix}`,
+      phone: `+85572${suffix.slice(0, 6).replace(/\D/g, "8")}`,
+      role: UserRole.BUYER
+    });
+
+    try {
+      const updatedUser = await updateUserAccess({
+        actorUserId: adminUser.id,
+        email: `buyer-access-updated-${suffix}@khmercart.local`,
+        roles: [UserRole.BUYER, UserRole.ADMIN],
+        userId: managedUser.id
+      });
+
+      expect(updatedUser.email).toBe(`buyer-access-updated-${suffix}@khmercart.local`);
+      expect(updatedUser.roles).toEqual([UserRole.ADMIN, UserRole.BUYER]);
+
+      const auditLog = await prisma.auditLog.findFirst({
+        where: {
+          action: "USER_ACCESS_UPDATED",
+          actorUserId: adminUser.id,
+          entityId: managedUser.id,
+          entityType: "User"
         }
       });
 

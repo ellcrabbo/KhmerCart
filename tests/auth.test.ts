@@ -19,9 +19,11 @@ import {
 const baseConfig: AuthConfig = {
   jwtSecret: "test-secret",
   otpProvider: OTP_PROVIDER_DEV_STUB,
+  otpRequestIpLimit: 20,
   otpRequestLimit: 5,
   otpRateLimitWindowSeconds: 300,
   otpTtlSeconds: 300,
+  otpVerifyIpLimit: 20,
   otpVerifyLimit: 5,
   sessionTtlSeconds: 3600
 };
@@ -242,6 +244,33 @@ describe("OTP auth flow", () => {
     });
   });
 
+  it("enforces OTP request rate limits per IP address", async () => {
+    const store = new MemoryAuthStore();
+    const config: AuthConfig = {
+      ...baseConfig,
+      otpRequestIpLimit: 1
+    };
+    const now = new Date("2099-03-29T11:30:00.000Z");
+
+    await requestOtpLogin(store, config, {
+      identifier: "admin-one@khmercart.local",
+      ipAddress: "203.0.113.40",
+      now
+    });
+
+    await expect(
+      requestOtpLogin(store, config, {
+        identifier: "admin-two@khmercart.local",
+        ipAddress: "203.0.113.40",
+        now: new Date("2099-03-29T11:30:01.000Z")
+      })
+    ).rejects.toMatchObject<AuthError>({
+      code: "RATE_LIMITED",
+      message: "Too many OTP requests from this network. Please try again later.",
+      status: 429
+    });
+  });
+
   it("rejects invalid OTP codes", async () => {
     const store = new MemoryAuthStore();
     const now = new Date("2099-03-29T12:00:00.000Z");
@@ -342,6 +371,8 @@ describe("OTP auth flow", () => {
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
       authorization: "Bearer re_test_123"
     });
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("Your KhmerCart sign-in code");
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("If you didn't request this code");
   });
 
   it("fails with a clear error when real OTP delivery is not configured for the channel", async () => {

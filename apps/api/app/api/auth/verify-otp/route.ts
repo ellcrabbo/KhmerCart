@@ -5,8 +5,9 @@ import {
   verifyOtpLogin
 } from "@khmercart/core/auth";
 import { createAuthStore } from "@khmercart/db/auth-store";
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getAuthConfig, jsonErrorResponse, readJsonBody } from "../_lib/auth-route";
+import { getAuthConfig, getClientIpAddress, jsonErrorResponse, readJsonBody } from "../_lib/auth-route";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,7 @@ type VerifyOtpBody = {
   identifier?: string;
 };
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await readJsonBody<VerifyOtpBody>(request);
 
@@ -26,7 +27,8 @@ export async function POST(request: Request) {
     const config = getAuthConfig();
     const result = await verifyOtpLogin(createAuthStore(), config, {
       code: body.code,
-      identifier: body.identifier
+      identifier: body.identifier,
+      ipAddress: getClientIpAddress(request)
     });
     const response = NextResponse.json(result);
 

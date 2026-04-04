@@ -11,9 +11,11 @@ import { UserRole } from "@khmercart/db/prisma-client";
 const dbAuthConfig: AuthConfig = {
   jwtSecret: "db-auth-test-secret",
   otpProvider: OTP_PROVIDER_DEV_STUB,
+  otpRequestIpLimit: 20,
   otpRequestLimit: 5,
   otpRateLimitWindowSeconds: 300,
   otpTtlSeconds: 300,
+  otpVerifyIpLimit: 20,
   otpVerifyLimit: 5,
   sessionTtlSeconds: 3600
 };

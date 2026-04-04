@@ -26,6 +26,12 @@ const sections = [
     href: "/audit",
     key: "audit",
     label: "Audit logs"
+  },
+  {
+    description: "Manage account emails, role access, and live OTP risk signals.",
+    href: "/accounts",
+    key: "accounts",
+    label: "Accounts"
   }
 ] as const;
 

@@ -158,6 +158,10 @@ Important variables:
 - `TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_FROM_NUMBER`
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
+- `AUTH_OTP_REQUEST_LIMIT`
+- `AUTH_OTP_REQUEST_IP_LIMIT`
+- `AUTH_OTP_VERIFY_LIMIT`
+- `AUTH_OTP_VERIFY_IP_LIMIT`
 - `KYC_DOCUMENT_TYPES`
 - `S3_ENDPOINT`
 - `S3_BUCKET`
@@ -178,6 +182,12 @@ Real OTP delivery:
 - Email identifiers are delivered through Resend using:
   - `RESEND_API_KEY`
   - `RESEND_FROM_EMAIL`
+- OTP delivery now applies both identifier and IP throttles. The default starter values are:
+  - `AUTH_OTP_REQUEST_LIMIT=5`
+  - `AUTH_OTP_REQUEST_IP_LIMIT=20`
+  - `AUTH_OTP_VERIFY_LIMIT=5`
+  - `AUTH_OTP_VERIFY_IP_LIMIT=20`
+- The admin console now includes an `Accounts` section for safe email/role updates plus live OTP abuse visibility from recent rate-limit buckets and challenges.
 - Seeded demo emails:
   - `admin@khmercart.local`
   - `buyer@khmercart.local`
