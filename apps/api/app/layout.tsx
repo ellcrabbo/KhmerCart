@@ -1,4 +1,5 @@
 import { appCatalog } from "@khmercart/core";
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
 import type { ReactNode } from "react";
@@ -25,7 +26,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html className={`${sans.variable} ${mono.variable}`} lang="en">
-      <body className="font-[family-name:var(--font-sans)] antialiased">{children}</body>
+      <body className="font-[family-name:var(--font-sans)] antialiased">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
