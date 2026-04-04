@@ -336,4 +336,92 @@ describe("PayWay provider", () => {
       });
     }
   });
+
+  it("renders a QR bridge page when PayWay returns a deeplink and qr payload", async () => {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const previousMerchantId = process.env.PAYWAY_MERCHANT_ID;
+    const previousApiKey = process.env.PAYWAY_API_KEY;
+    const previousBaseUrl = process.env.PAYWAY_BASE_URL;
+    const previousWebhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+    const fixture = await createCheckoutFixture(suffix);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          abapay_deeplink: "abamobilebank://payway/test",
+          qrString: "000201010212PAYWAYTEST6304ABCD",
+          status: {
+            code: "00",
+            message: "Success!"
+          }
+        }),
+        {
+          headers: {
+            "content-type": "application/json"
+          },
+          status: 200
+        }
+      )
+    );
+
+    process.env.PAYWAY_MERCHANT_ID = "ec000002";
+    process.env.PAYWAY_API_KEY = "sandbox-public-key";
+    delete process.env.PAYWAY_BASE_URL;
+    process.env.WEBHOOK_BASE_URL = "https://api.khmercart.shop";
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const response = await paywayCheckoutGet(
+        new Request(`https://api.khmercart.shop/payments/payway/checkout/${fixture.order.id}`),
+        {
+          params: Promise.resolve({
+            orderId: fixture.order.id
+          })
+        }
+      );
+
+      expect(response.status).toBe(200);
+
+      const html = await response.text();
+
+      expect(html).toContain("Continue in ABA PayWay");
+      expect(html).toContain("abamobilebank://payway/test");
+      expect(html).toContain("Scan this QR in the ABA mobile app");
+      expect(html).toContain("<svg");
+      expect(html).toContain("000201010212PAYWAYTEST6304ABCD");
+    } finally {
+      vi.unstubAllGlobals();
+
+      if (previousMerchantId) {
+        process.env.PAYWAY_MERCHANT_ID = previousMerchantId;
+      } else {
+        delete process.env.PAYWAY_MERCHANT_ID;
+      }
+
+      if (previousApiKey) {
+        process.env.PAYWAY_API_KEY = previousApiKey;
+      } else {
+        delete process.env.PAYWAY_API_KEY;
+      }
+
+      if (previousBaseUrl) {
+        process.env.PAYWAY_BASE_URL = previousBaseUrl;
+      } else {
+        delete process.env.PAYWAY_BASE_URL;
+      }
+
+      if (previousWebhookBaseUrl) {
+        process.env.WEBHOOK_BASE_URL = previousWebhookBaseUrl;
+      } else {
+        delete process.env.WEBHOOK_BASE_URL;
+      }
+
+      await cleanupFixture({
+        buyerId: fixture.buyer.id,
+        orderId: fixture.order.id,
+        productId: fixture.product.id,
+        sellerId: fixture.seller.id,
+        sellerUserId: fixture.sellerUser.id
+      });
+    }
+  });
 });

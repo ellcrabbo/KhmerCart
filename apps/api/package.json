@@ -5,7 +5,9 @@
     "@khmercart/core": "workspace:*",
     "@khmercart/db": "workspace:*",
     "@khmercart/ui": "workspace:*",
+    "@types/qrcode": "^1.5.6",
     "next": "latest",
+    "qrcode": "^1.5.4",
     "react": "latest",
     "react-dom": "latest"
   },

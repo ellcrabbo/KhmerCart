@@ -1,3 +1,4 @@
+import QRCode from "qrcode";
 import {
   buildPaywayPurchaseForm,
   isPaywayConfigured,
@@ -125,6 +126,29 @@ function renderHtmlPage(input: {
       .button-link.secondary:hover {
         background: rgba(217, 119, 6, 0.16);
       }
+      .qr-shell {
+        margin-top: 1.75rem;
+        display: grid;
+        gap: 0.9rem;
+        justify-items: center;
+      }
+      .qr-card {
+        display: inline-flex;
+        border-radius: 1.5rem;
+        background: white;
+        border: 1px solid rgba(28, 25, 23, 0.08);
+        box-shadow: 0 16px 35px rgba(120, 53, 15, 0.12);
+        padding: 1rem;
+      }
+      .qr-card svg {
+        display: block;
+        height: auto;
+        width: min(100%, 18rem);
+      }
+      .qr-caption {
+        margin: 0;
+        text-align: center;
+      }
       pre {
         margin: 1.5rem 0 0;
         border-radius: 1rem;
@@ -240,13 +264,28 @@ function injectBaseHref(html: string, baseHref: string): string {
   return html;
 }
 
-function renderQrFallbackPage(input: {
+async function renderQrFallbackPage(input: {
   deeplink: string | null;
   orderId: string;
   orderNumber: string;
   qrString: string | null;
   statusMessage: string | null;
-}): Response {
+}): Promise<Response> {
+  let qrSvg: string | null = null;
+
+  if (input.qrString) {
+    try {
+      qrSvg = await QRCode.toString(input.qrString, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        type: "svg",
+        width: 320
+      });
+    } catch {
+      qrSvg = null;
+    }
+  }
+
   return htmlResponse(
     renderHtmlPage({
       body: `
@@ -273,6 +312,18 @@ function renderQrFallbackPage(input: {
               Refresh payment status
             </a>
           </div>
+          ${
+            qrSvg
+              ? `
+                <div class="qr-shell">
+                  <div class="qr-card" aria-label="ABA PayWay QR code">
+                    ${qrSvg}
+                  </div>
+                  <p class="qr-caption">Scan this QR in the ABA mobile app if the deeplink does not open.</p>
+                </div>
+              `
+              : ""
+          }
           ${
             input.qrString
               ? `<pre><code>${escapeHtml(input.qrString)}</code></pre>`
