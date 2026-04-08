@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import {
   buildPaywayQrRequest,
+  detectPaywaySandboxPlaceholderQr,
   isPaywayConfigured,
   readPaymentsConfig,
   resolvePaywayGenerateQrUrl
@@ -27,11 +28,6 @@ type CachedPaywayCheckoutSession = {
   qrString: string | null;
   statusMessage: string | null;
   traceId: string | null;
-};
-
-type TlvSegment = {
-  id: string;
-  value: string;
 };
 
 function escapeHtml(value: string): string {
@@ -261,67 +257,6 @@ function readNestedTextValue(
   }
 
   return null;
-}
-
-function parseTlvSegments(value: string): TlvSegment[] {
-  const segments: TlvSegment[] = [];
-  let offset = 0;
-
-  while (offset + 4 <= value.length) {
-    const id = value.slice(offset, offset + 2);
-    const rawLength = value.slice(offset + 2, offset + 4);
-    const length = Number.parseInt(rawLength, 10);
-
-    if (!Number.isFinite(length) || length < 0) {
-      break;
-    }
-
-    const valueStart = offset + 4;
-    const valueEnd = valueStart + length;
-
-    if (valueEnd > value.length) {
-      break;
-    }
-
-    segments.push({
-      id,
-      value: value.slice(valueStart, valueEnd)
-    });
-
-    offset = valueEnd;
-
-    if (id === "63") {
-      break;
-    }
-  }
-
-  return segments;
-}
-
-export function detectPaywaySandboxPlaceholderQr(
-  qrString: string | null | undefined
-): boolean {
-  if (!qrString) {
-    return false;
-  }
-
-  const merchantTemplate = parseTlvSegments(qrString).find(
-    (segment) => segment.id === "30"
-  );
-
-  if (!merchantTemplate) {
-    return false;
-  }
-
-  const merchantSegments = parseTlvSegments(merchantTemplate.value);
-  const bakongId =
-    merchantSegments.find((segment) => segment.id === "00")?.value ?? null;
-  const merchantAccountId =
-    merchantSegments.find((segment) => segment.id === "01")?.value ?? null;
-
-  return (
-    bakongId === "abaakhppxxx@abaa" || merchantAccountId === "111111111111111"
-  );
 }
 
 function parsePaywayJsonPayload(rawValue: string): PaywayResponseRecord | null {

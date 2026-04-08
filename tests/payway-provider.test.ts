@@ -2,13 +2,11 @@ import { createHash } from "node:crypto";
 import { createSellerProduct, prisma } from "@khmercart/db";
 import { ProductModerationStatus, UserRole } from "@khmercart/db/prisma-client";
 import {
+  detectPaywaySandboxPlaceholderQr,
   createPaywayWebhookSignature,
   verifyPaywayWebhookSignature
 } from "@khmercart/core";
-import {
-  detectPaywaySandboxPlaceholderQr,
-  GET as paywayCheckoutGet
-} from "../apps/api/app/payments/payway/checkout/[orderId]/route";
+import { GET as paywayCheckoutGet } from "../apps/api/app/payments/payway/checkout/[orderId]/route";
 
 function createUniquePhone(prefix: string, suffix: string) {
   const digits = createHash("sha256")

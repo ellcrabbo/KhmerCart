@@ -1,13 +1,19 @@
-import { formatDisputeReason, formatDisputeStatus, formatKycStatus } from "@khmercart/core";
+import {
+  detectPaywaySandboxPlaceholderQr,
+  formatDisputeReason,
+  formatDisputeStatus,
+  formatKycStatus
+} from "@khmercart/core";
 import type { AuthConfig } from "@khmercart/core/auth";
 import {
   DisputeStatus,
+  PaymentProvider,
   Prisma,
   ProductModerationStatus,
   ProductStatus,
   UserRole
 } from "./prisma-client";
-import type { DisputeReason, KycStatus } from "./prisma-client";
+import type { DisputeReason, KycStatus, PaymentMethod, PaymentStatus } from "./prisma-client";
 import { prisma } from "./prisma";
 import { SellerServiceError } from "./seller";
 
@@ -132,8 +138,103 @@ export type AdminOtpAbuseOverview = {
   unresolvedChallenges: number;
 };
 
+export type AdminPaymentConsoleEntry = {
+  amountMinor: number;
+  buyerName: string;
+  checkoutUrl: string | null;
+  createdAt: string;
+  currency: string;
+  failedAt: string | null;
+  id: string;
+  lastReconciledAt: string | null;
+  latestEvent:
+    | {
+        eventType: string;
+        providerEventId: string | null;
+        providerStatus: string;
+        receivedAt: string;
+        signatureVerified: boolean;
+      }
+    | null;
+  method: PaymentMethod;
+  orderId: string;
+  orderNumber: string;
+  orderState: string;
+  payway:
+    | {
+        lastReconciliationRunAt: string | null;
+        lastWebhookReceivedAt: string | null;
+        latestProviderStatus: string | null;
+        qrExpiresAt: string | null;
+        qrGeneratedAt: string | null;
+        qrGenerationStatus: string | null;
+        qrTraceId: string | null;
+        sandboxPlaceholder: boolean;
+      }
+    | null;
+  provider: PaymentProvider;
+  providerPaymentId: string | null;
+  providerReference: string | null;
+  sellerName: string;
+  status: PaymentStatus;
+  updatedAt: string;
+};
+
 function serializeDate(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
+}
+
+function readJsonRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readJsonText(value: unknown): string | null {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+
+    return normalized || null;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return null;
+}
+
+function readNestedJsonText(
+  payload: Record<string, unknown> | null,
+  paths: string[]
+): string | null {
+  if (!payload) {
+    return null;
+  }
+
+  for (const path of paths) {
+    const segments = path.split(".");
+    let current: unknown = payload;
+
+    for (const segment of segments) {
+      if (!current || typeof current !== "object" || Array.isArray(current)) {
+        current = null;
+        break;
+      }
+
+      current = (current as Record<string, unknown>)[segment];
+    }
+
+    const resolved = readJsonText(current);
+
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return null;
 }
 
 function orderedRoles(roles: Iterable<UserRole>): UserRole[] {
@@ -620,6 +721,94 @@ export async function listAuditLogs(limit = 80): Promise<AdminAuditLogEntry[]> {
     entityType: entry.entityType,
     id: entry.id
   }));
+}
+
+function readPaywayConsoleDetails(
+  metadata: Record<string, unknown> | null
+): AdminPaymentConsoleEntry["payway"] {
+  if (!metadata) {
+    return null;
+  }
+
+  const checkoutSession = readJsonRecord(metadata.paywayCheckoutSession);
+
+  return {
+    lastReconciliationRunAt: readNestedJsonText(metadata, ["lastReconciliationRunAt"]),
+    lastWebhookReceivedAt: readNestedJsonText(metadata, ["latestWebhookReceivedAt"]),
+    latestProviderStatus: readNestedJsonText(metadata, [
+      "providerStatus",
+      "paywayCheckTransaction.payment_status",
+      "paywayCheckTransaction.payment_status_code"
+    ]),
+    qrExpiresAt: readNestedJsonText(checkoutSession, ["expiresAt"]),
+    qrGeneratedAt: readNestedJsonText(checkoutSession, ["generatedAt"]),
+    qrGenerationStatus: readNestedJsonText(checkoutSession, ["statusMessage"]),
+    qrTraceId: readNestedJsonText(checkoutSession, ["traceId"]),
+    sandboxPlaceholder: detectPaywaySandboxPlaceholderQr(
+      readNestedJsonText(checkoutSession, ["qrString"])
+    )
+  };
+}
+
+export async function listRecentPayments(
+  limit = 40
+): Promise<AdminPaymentConsoleEntry[]> {
+  const payments = await prisma.payment.findMany({
+    include: {
+      events: {
+        orderBy: {
+          receivedAt: "desc"
+        },
+        take: 1
+      },
+      order: {
+        include: {
+          buyer: true,
+          seller: true
+        }
+      }
+    },
+    orderBy: [{ createdAt: "desc" }],
+    take: limit
+  });
+
+  return payments.map((payment) => {
+    const metadata = readJsonRecord(payment.metadata);
+    const latestEvent = payment.events[0] ?? null;
+
+    return {
+      amountMinor: payment.amountMinor,
+      buyerName: payment.order.buyer.fullName,
+      checkoutUrl: payment.checkoutUrl,
+      createdAt: payment.createdAt.toISOString(),
+      currency: payment.currency,
+      failedAt: serializeDate(payment.failedAt),
+      id: payment.id,
+      lastReconciledAt: serializeDate(payment.lastReconciledAt),
+      latestEvent: latestEvent
+        ? {
+            eventType: latestEvent.eventType,
+            providerEventId: latestEvent.providerEventId,
+            providerStatus: latestEvent.providerStatus,
+            receivedAt: latestEvent.receivedAt.toISOString(),
+            signatureVerified: latestEvent.signatureVerified
+          }
+        : null,
+      method: payment.method,
+      orderId: payment.orderId,
+      orderNumber: payment.order.orderNumber,
+      orderState: payment.order.state,
+      payway: payment.provider === PaymentProvider.PAYWAY
+        ? readPaywayConsoleDetails(metadata)
+        : null,
+      provider: payment.provider,
+      providerPaymentId: payment.providerPaymentId,
+      providerReference: payment.providerReference,
+      sellerName: payment.order.seller.displayName,
+      status: payment.status,
+      updatedAt: payment.updatedAt.toISOString()
+    };
+  });
 }
 
 export async function listUserDirectory(limit = 120): Promise<AdminUserDirectoryEntry[]> {

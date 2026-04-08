@@ -22,6 +22,12 @@ const sections = [
     label: "Disputes"
   },
   {
+    description: "Provider status, callback activity, and pending payment diagnostics.",
+    href: "/payments",
+    key: "payments",
+    label: "Payments"
+  },
+  {
     description: "Privileged activity across approvals, moderation, and support.",
     href: "/audit",
     key: "audit",
@@ -65,7 +71,7 @@ export function AdminConsoleShell({
               </p>
             </div>
 
-            <nav className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Admin sections">
+            <nav className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3" aria-label="Admin sections">
               {sections.map((section) => {
                 const isCurrent = section.key === current;
 

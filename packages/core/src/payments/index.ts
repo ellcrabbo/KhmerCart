@@ -3,6 +3,7 @@ import { createBakongAdapter } from "./providers/bakong";
 import {
   buildPaywayQrRequest,
   createPaywayAdapter,
+  detectPaywaySandboxPlaceholderQr,
   createPaywayWebhookSignature,
   isPaywayConfigured,
   resolvePaywayGenerateQrUrl,
@@ -18,6 +19,7 @@ export * from "./PaymentAdapter";
 export { createHmacSignature } from "./providers/shared";
 export {
   buildPaywayQrRequest,
+  detectPaywaySandboxPlaceholderQr,
   createPaywayWebhookSignature,
   isPaywayConfigured,
   resolvePaywayGenerateQrUrl,

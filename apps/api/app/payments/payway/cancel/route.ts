@@ -87,6 +87,28 @@ export async function GET(request: Request) {
       a {
         color: #b45309;
         font-weight: 700;
+        text-decoration: none;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.9rem;
+        margin-top: 1.4rem;
+      }
+      .button-link {
+        align-items: center;
+        border-radius: 999px;
+        background: #b45309;
+        color: white;
+        display: inline-flex;
+        font-size: 0.95rem;
+        font-weight: 700;
+        justify-content: center;
+        padding: 0.9rem 1.25rem;
+      }
+      .button-link.secondary {
+        background: rgba(180, 83, 9, 0.08);
+        color: #b45309;
       }
     </style>
   </head>
@@ -96,8 +118,12 @@ export async function GET(request: Request) {
       <h1>PayWay checkout was not completed</h1>
       <p>
         Order <strong>${escapeHtml(order.orderNumber)}</strong> is still waiting for payment.
-        You can return to <a href="https://www.khmercart.shop">KhmerCart</a> and try again later.
+        The payment was not confirmed, so KhmerCart has left the order in a retryable state.
       </p>
+      <div class="actions">
+        <a class="button-link" href="/payments/payway/checkout/${escapeHtml(order.id)}">Retry checkout</a>
+        <a class="button-link secondary" href="https://www.khmercart.shop">Back to KhmerCart</a>
+      </div>
     </article>
   </body>
 </html>`);
