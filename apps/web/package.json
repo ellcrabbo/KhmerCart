@@ -1,5 +1,5 @@
 {
-  "name": "@khmercart/buyer",
+  "name": "@khmercart/web",
   "private": true,
   "dependencies": {
     "@khmercart/core": "workspace:*",
@@ -19,7 +19,7 @@
     "dev": "next dev --port 3000",
     "lint": "eslint . --max-warnings 0",
     "start": "next start --port 3000",
-    "test": "node ../../scripts/run-workspace-tests.mjs @khmercart/buyer",
+    "test": "node ../../scripts/run-workspace-tests.mjs @khmercart/web",
     "typecheck": "tsc --noEmit"
   }
 }

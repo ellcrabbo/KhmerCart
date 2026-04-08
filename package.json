@@ -7,7 +7,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@prisma/client": "7.6.0",
+    "@prisma/client": "7.5.0",
     "jose": "^6.2.2"
   },
   "scripts": {
@@ -21,16 +21,23 @@
     "format:check": "prettier --check .",
     "hygiene": "node ./scripts/check-repo-hygiene.mjs",
     "lint": "turbo run lint",
+    "mobile:build:ios": "cd apps/mobile && pnpm dlx eas-cli@16.20.0 build --platform ios --profile production",
+    "mobile:ios": "pnpm --filter @khmercart/mobile ios",
+    "mobile:prebuild": "pnpm --filter @khmercart/mobile exec expo prebuild",
+    "mobile:run:ios": "pnpm --filter @khmercart/mobile exec expo run:ios",
+    "mobile:start": "pnpm --filter @khmercart/mobile start",
+    "mobile:submit:ios": "cd apps/mobile && pnpm dlx eas-cli@16.20.0 submit --platform ios --profile production",
     "payments:reconcile": "./scripts/with-local-env.sh tsx scripts/reconcile-payments.ts",
     "postinstall": "prisma generate",
     "test": "vitest run",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "web:dev": "pnpm --filter @khmercart/web dev"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
+    "@types/react": "~19.1.10",
+    "@types/react-dom": "~19.1.7",
     "dotenv": "^17.2.3",
     "eslint": "^9.0.0",
     "eslint-plugin-react": "latest",
@@ -38,9 +45,9 @@
     "globals": "latest",
     "next": "latest",
     "prettier": "latest",
-    "prisma": "7.6.0",
-    "react": "latest",
-    "react-dom": "latest",
+    "prisma": "7.5.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "tsx": "latest",
     "turbo": "2.9.3",
     "typescript": "6.0.2",
@@ -49,6 +56,10 @@
   },
   "pnpm": {
     "overrides": {
+      "react": "19.1.0",
+      "react-dom": "19.1.0",
+      "@types/react": "~19.1.10",
+      "@types/react-dom": "~19.1.7",
       "@prisma/config>effect": "3.21.0"
     }
   }

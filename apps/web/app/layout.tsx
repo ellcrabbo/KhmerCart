@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { readDefaultBuyerLocale } from "./lib/i18n";
 import "./globals.css";
 
-const buyer = appCatalog.buyer;
+const web = appCatalog.web;
 
 const mono = IBM_Plex_Mono({
   subsets: ["latin"],
@@ -19,9 +19,9 @@ const sans = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  description: buyer.description,
+  description: web.description,
   title: {
-    default: buyer.title,
+    default: web.title,
     template: "%s | KhmerCart"
   }
 };

@@ -30,7 +30,9 @@
     "KV_URL",
     "KV_REST_API_URL",
     "KV_REST_API_TOKEN",
-    "KV_REST_API_READ_ONLY_TOKEN"
+    "KV_REST_API_READ_ONLY_TOKEN",
+    "EXPO_PUBLIC_API_BASE_URL",
+    "EXPO_PUBLIC_DEFAULT_LOCALE"
   ],
   "tasks": {
     "build": {

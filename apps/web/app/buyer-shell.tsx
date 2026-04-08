@@ -10,7 +10,7 @@ type BuyerShellProps = {
 };
 
 export function BuyerShell({ children, locale, supportedLocales }: BuyerShellProps) {
-  const buyer = appCatalog.buyer;
+  const web = appCatalog.web;
   const dictionary = getBuyerDictionary(locale);
 
   return (
@@ -34,7 +34,7 @@ export function BuyerShell({ children, locale, supportedLocales }: BuyerShellPro
                   </span>
                 </a>
                 <p className="max-w-2xl text-sm leading-7 text-white/70 sm:text-base">
-                  {buyer.description}
+                  {web.description}
                 </p>
               </div>
             </div>

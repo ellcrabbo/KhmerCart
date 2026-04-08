@@ -1,7 +1,7 @@
 import { appCatalog, type AppId } from "@khmercart/core";
 import type { ReactNode } from "react";
 
-const navOrder: AppId[] = ["buyer", "seller", "admin", "api"];
+const navOrder: AppId[] = ["web", "seller", "admin", "api"];
 
 type AppShellProps = {
   app: AppId;

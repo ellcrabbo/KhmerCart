@@ -1,12 +1,12 @@
-import { formatMoney } from "../apps/buyer/app/lib/format";
+import { formatMoney } from "../apps/web/app/lib/format";
 import {
   getBuyerDictionary,
   readDefaultBuyerLocale,
   readSupportedBuyerLocales,
   resolveBuyerLocale
-} from "../apps/buyer/app/lib/i18n";
+} from "../apps/web/app/lib/i18n";
 
-describe("buyer locale scaffolding", () => {
+describe("web storefront locale scaffolding", () => {
   it("parses supported locales and falls back to both storefront languages", () => {
     expect(
       readSupportedBuyerLocales({

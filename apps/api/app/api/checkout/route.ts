@@ -1,3 +1,4 @@
+import { readCheckoutConfig } from "@khmercart/core"
 import { readAuthConfig, requireRoleFromHeaders } from "@khmercart/core/auth"
 import { CheckoutServiceError, checkoutBuyerCart } from "@khmercart/db"
 import type { NextRequest } from "next/server"
@@ -30,6 +31,18 @@ type CheckoutBody = {
     phone?: string
     postalCode?: string
     stateProvince?: string
+  }
+}
+
+export async function GET() {
+  try {
+    const checkoutConfig = readCheckoutConfig(process.env)
+
+    return NextResponse.json({
+      paymentMethods: checkoutConfig.paymentMethods
+    })
+  } catch (error) {
+    return jsonErrorResponse(error)
   }
 }
 

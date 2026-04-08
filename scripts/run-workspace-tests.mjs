@@ -13,7 +13,7 @@ const WORKSPACE_TEST_MAP = {
     "tests/payment-webhooks.test.ts",
     "tests/route-guards.test.ts"
   ],
-  "@khmercart/buyer": ["tests/buyer-i18n.test.ts"],
+  "@khmercart/web": ["tests/web-i18n.test.ts"],
   "@khmercart/core": ["tests/auth.test.ts", "tests/order-state-machine.test.ts"],
   "@khmercart/db": [
     "tests/admin-mutations-audit.test.ts",

@@ -24,9 +24,9 @@ export default function ApiPage() {
           <dl className="space-y-4 text-sm text-stone-700">
             <div className="rounded-2xl border border-black/10 bg-stone-50/90 px-4 py-3">
               <dt className="text-xs font-semibold uppercase tracking-[0.25em] text-stone-500">
-                Buyer app
+                Web app
               </dt>
-              <dd className="mt-2 font-mono text-sm text-stone-900">{appCatalog.buyer.href}</dd>
+              <dd className="mt-2 font-mono text-sm text-stone-900">{appCatalog.web.href}</dd>
             </div>
             <div className="rounded-2xl border border-black/10 bg-stone-50/90 px-4 py-3">
               <dt className="text-xs font-semibold uppercase tracking-[0.25em] text-stone-500">

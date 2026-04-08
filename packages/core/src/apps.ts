@@ -28,16 +28,16 @@ export const appCatalog = {
     ],
     title: "API gateway"
   },
-  buyer: {
+  web: {
     description:
-      "Customer storefront for discovery, conversion, and checkout flows tuned for KhmerCart buyers.",
+      "Web storefront for discovery, conversion, and checkout flows tuned for KhmerCart buyers.",
     href: "http://localhost:3000",
     highlights: [
-      "Render a branded buyer shell with shared UI primitives.",
+      "Render a branded web shell with shared UI primitives.",
       "Connect to shared core and database packages from the same workspace.",
       "Expose health endpoints that validate Postgres and Redis connectivity."
     ],
-    title: "Buyer storefront"
+    title: "Web storefront"
   },
   seller: {
     description:

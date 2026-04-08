@@ -1,6 +1,6 @@
 # KhmerCart
 
-KhmerCart is a pnpm + Turborepo monorepo for a Cambodia-focused marketplace. It currently includes buyer, seller, admin, and API Next.js apps plus shared database, domain, and UI packages.
+KhmerCart is a pnpm + Turborepo monorepo for a Cambodia-focused marketplace. It now separates the customer-facing surface into a web storefront and a mobile app, alongside seller, admin, and API apps plus shared database, domain, and UI packages.
 
 ## Stack
 
@@ -19,8 +19,9 @@ KhmerCart is a pnpm + Turborepo monorepo for a Cambodia-focused marketplace. It 
 apps/
   admin/    Admin review and seller approval UI
   api/      Auth and backend-facing API routes
-  buyer/    Buyer storefront, discovery feed, and PDP
+  mobile/   Expo React Native iOS/mobile app
   seller/   Seller onboarding and catalog management
+  web/      Web storefront, discovery feed, and PDP
 
 packages/
   core/     Shared auth, catalog, seller, and health logic
@@ -72,7 +73,7 @@ prisma/
    pnpm db:seed
    ```
 
-6. Start the monorepo in dev mode:
+6. Start the web/API/admin/seller apps in dev mode:
 
    ```bash
    pnpm dev
@@ -89,14 +90,14 @@ pnpm test
 
 ## Local URLs
 
-- Buyer app: [http://localhost:3000](http://localhost:3000)
+- Web app: [http://localhost:3000](http://localhost:3000)
 - Seller app: [http://localhost:3001](http://localhost:3001)
 - API app: [http://localhost:3002](http://localhost:3002)
 - Admin app: [http://localhost:3003](http://localhost:3003)
 
 ## Health endpoints
 
-- Buyer: [http://localhost:3000/health](http://localhost:3000/health)
+- Web: [http://localhost:3000/health](http://localhost:3000/health)
 - Seller: [http://localhost:3001/health](http://localhost:3001/health)
 - API: [http://localhost:3002/health](http://localhost:3002/health)
 - API JSON health: [http://localhost:3002/api/health](http://localhost:3002/api/health)
@@ -117,11 +118,63 @@ pnpm db:seed
 Run a single app:
 
 ```bash
-pnpm --filter @khmercart/buyer dev
+pnpm --filter @khmercart/web dev
 pnpm --filter @khmercart/seller dev
 pnpm --filter @khmercart/api dev
 pnpm --filter @khmercart/admin dev
 ```
+
+Run the mobile app separately:
+
+```bash
+pnpm mobile:start
+pnpm mobile:ios
+pnpm mobile:run:ios
+```
+
+For the iOS simulator, `pnpm mobile:start` now runs the Expo dev client server on `localhost`, which is more reliable than LAN mode for the simulator. For a physical device on your Wi‑Fi network, use:
+
+```bash
+pnpm --filter @khmercart/mobile start:lan
+```
+
+Mobile environment:
+
+```bash
+cp apps/mobile/.env.example apps/mobile/.env.local
+```
+
+- `EXPO_PUBLIC_API_BASE_URL` defaults to `http://127.0.0.1:3002` for the iOS simulator.
+- On a physical device, replace it with your Mac's LAN IP.
+- The mobile app currently covers buyer discovery, product detail, locale toggle, and OTP-backed buyer session restore.
+
+## iOS release flow
+
+Local native iOS build:
+
+```bash
+pnpm mobile:run:ios
+```
+
+Cloud build for TestFlight/App Store:
+
+```bash
+pnpm mobile:build:ios
+```
+
+Submit an existing iOS build to App Store Connect:
+
+```bash
+pnpm mobile:submit:ios
+```
+
+Notes:
+
+- The EAS commands use `pnpm dlx eas-cli@16.20.0`, so you do not need a separate global `eas` install.
+- You must be logged into Expo/EAS and Apple Developer for cloud builds and TestFlight submission.
+- Before shipping, confirm the production mobile API URL in `apps/mobile/.env.local` or the corresponding EAS environment.
+- The current iOS bundle identifier is `com.khmercart.mobile`.
+- The generated native iOS project lives in `apps/mobile/ios`.
 
 ## Environment
 
@@ -172,7 +225,7 @@ Important variables:
 - `PAYWAY_MERCHANT_ID`
 - `PAYWAY_API_KEY`
 
-The buyer app defaults to English and supports locale switching between English and Khmer.
+The web storefront defaults to English and supports locale switching between English and Khmer.
 
 PayWay notes:
 

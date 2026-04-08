@@ -7,14 +7,14 @@ describe("shared UI primitives", () => {
     const html = renderToStaticMarkup(
       React.createElement(
         AppShell,
-        { app: "buyer" },
-        React.createElement("p", null, "Buyer content")
+        { app: "web" },
+        React.createElement("p", null, "Web content")
       )
     );
 
     expect(html).toContain("KhmerCart Monorepo");
-    expect(html).toContain("Buyer storefront");
-    expect(html).toContain("Buyer content");
+    expect(html).toContain("Web storefront");
+    expect(html).toContain("Web content");
     expect(html).toContain('aria-current="page"');
     expect(html).toContain("http://localhost:3003");
   });
