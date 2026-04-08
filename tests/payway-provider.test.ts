@@ -424,4 +424,121 @@ describe("PayWay provider", () => {
       });
     }
   });
+
+  it("reuses the cached PayWay QR session for repeated checkout page loads", async () => {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const previousMerchantId = process.env.PAYWAY_MERCHANT_ID;
+    const previousApiKey = process.env.PAYWAY_API_KEY;
+    const previousBaseUrl = process.env.PAYWAY_BASE_URL;
+    const previousWebhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+    const fixture = await createCheckoutFixture(suffix);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          abapay_deeplink: "abamobilebank://payway/cached-test",
+          qrImage: "data:image/png;base64,CACHED",
+          qrString: "000201010212PAYWAYCACHED6304ABCD",
+          status: {
+            code: "00",
+            message: "Success.",
+            trace_id: "trace-cached"
+          }
+        }),
+        {
+          headers: {
+            "content-type": "application/json"
+          },
+          status: 200
+        }
+      )
+    );
+
+    process.env.PAYWAY_MERCHANT_ID = "ec000002";
+    process.env.PAYWAY_API_KEY = "sandbox-public-key";
+    delete process.env.PAYWAY_BASE_URL;
+    process.env.WEBHOOK_BASE_URL = "https://api.khmercart.shop";
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const firstResponse = await paywayCheckoutGet(
+        new Request(`https://api.khmercart.shop/payments/payway/checkout/${fixture.order.id}`),
+        {
+          params: Promise.resolve({
+            orderId: fixture.order.id
+          })
+        }
+      );
+      const secondResponse = await paywayCheckoutGet(
+        new Request(`https://api.khmercart.shop/payments/payway/checkout/${fixture.order.id}`),
+        {
+          params: Promise.resolve({
+            orderId: fixture.order.id
+          })
+        }
+      );
+
+      expect(firstResponse.status).toBe(200);
+      expect(secondResponse.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      const html = await secondResponse.text();
+
+      expect(html).toContain("abamobilebank://payway/cached-test");
+      expect(html).toContain("000201010212PAYWAYCACHED6304ABCD");
+
+      const payment = await prisma.payment.findUniqueOrThrow({
+        where: {
+          id: fixture.payment.id
+        }
+      });
+      const metadata =
+        payment.metadata && typeof payment.metadata === "object" && !Array.isArray(payment.metadata)
+          ? (payment.metadata as Record<string, unknown>)
+          : null;
+      const session =
+        metadata &&
+        metadata.paywayCheckoutSession &&
+        typeof metadata.paywayCheckoutSession === "object" &&
+        !Array.isArray(metadata.paywayCheckoutSession)
+          ? (metadata.paywayCheckoutSession as Record<string, unknown>)
+          : null;
+
+      expect(session?.traceId).toBe("trace-cached");
+      expect(session?.qrString).toBe("000201010212PAYWAYCACHED6304ABCD");
+    } finally {
+      vi.unstubAllGlobals();
+
+      if (previousMerchantId) {
+        process.env.PAYWAY_MERCHANT_ID = previousMerchantId;
+      } else {
+        delete process.env.PAYWAY_MERCHANT_ID;
+      }
+
+      if (previousApiKey) {
+        process.env.PAYWAY_API_KEY = previousApiKey;
+      } else {
+        delete process.env.PAYWAY_API_KEY;
+      }
+
+      if (previousBaseUrl) {
+        process.env.PAYWAY_BASE_URL = previousBaseUrl;
+      } else {
+        delete process.env.PAYWAY_BASE_URL;
+      }
+
+      if (previousWebhookBaseUrl) {
+        process.env.WEBHOOK_BASE_URL = previousWebhookBaseUrl;
+      } else {
+        delete process.env.WEBHOOK_BASE_URL;
+      }
+
+      await cleanupFixture({
+        buyerId: fixture.buyer.id,
+        orderId: fixture.order.id,
+        productId: fixture.product.id,
+        sellerId: fixture.seller.id,
+        sellerUserId: fixture.sellerUser.id
+      });
+    }
+  });
 });

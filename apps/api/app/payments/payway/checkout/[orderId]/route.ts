@@ -6,6 +6,7 @@ import {
   resolvePaywayGenerateQrUrl
 } from "@khmercart/core";
 import { prisma } from "@khmercart/db";
+import type { Prisma } from "@khmercart/db/prisma-client";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,17 @@ type CheckoutRouteContext = {
 };
 
 type PaywayResponseRecord = Record<string, unknown>;
+
+type CachedPaywayCheckoutSession = {
+  checkoutQrUrl: string | null;
+  deeplink: string | null;
+  expiresAt: string | null;
+  generatedAt: string | null;
+  qrImage: string | null;
+  qrString: string | null;
+  statusMessage: string | null;
+  traceId: string | null;
+};
 
 function escapeHtml(value: string): string {
   return value
@@ -366,6 +378,84 @@ function readAddressDetails(value: unknown): {
   };
 }
 
+function readPaymentMetadata(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readCachedCheckoutSession(
+  metadata: Record<string, unknown> | null
+): CachedPaywayCheckoutSession | null {
+  if (!metadata) {
+    return null;
+  }
+
+  const rawSession = metadata.paywayCheckoutSession;
+
+  if (!rawSession || typeof rawSession !== "object" || Array.isArray(rawSession)) {
+    return null;
+  }
+
+  const session = rawSession as Record<string, unknown>;
+
+  return {
+    checkoutQrUrl: readTextValue(session.checkoutQrUrl),
+    deeplink: readTextValue(session.deeplink),
+    expiresAt: readTextValue(session.expiresAt),
+    generatedAt: readTextValue(session.generatedAt),
+    qrImage: readTextValue(session.qrImage),
+    qrString: readTextValue(session.qrString),
+    statusMessage: readTextValue(session.statusMessage),
+    traceId: readTextValue(session.traceId)
+  };
+}
+
+function isCachedCheckoutSessionFresh(
+  session: CachedPaywayCheckoutSession | null,
+  now = new Date()
+): session is CachedPaywayCheckoutSession {
+  if (!session) {
+    return false;
+  }
+
+  if (!session.expiresAt) {
+    return true;
+  }
+
+  const expiresAt = Date.parse(session.expiresAt);
+
+  return Number.isFinite(expiresAt) && expiresAt > now.getTime();
+}
+
+function buildCachedCheckoutMetadata(input: {
+  checkoutQrUrl: string | null;
+  deeplink: string | null;
+  lifetimeMinutes: number;
+  qrImage: string | null;
+  qrString: string | null;
+  statusMessage: string | null;
+  traceId: string | null;
+}): Prisma.InputJsonObject {
+  const generatedAt = new Date();
+  const expiresAt = new Date(
+    generatedAt.getTime() + Math.max(input.lifetimeMinutes, 1) * 60 * 1000
+  );
+
+  return {
+    checkoutQrUrl: input.checkoutQrUrl,
+    deeplink: input.deeplink,
+    expiresAt: expiresAt.toISOString(),
+    generatedAt: generatedAt.toISOString(),
+    qrImage: input.qrImage,
+    qrString: input.qrString,
+    statusMessage: input.statusMessage,
+    traceId: input.traceId
+  };
+}
+
 export async function GET(request: Request, context: CheckoutRouteContext) {
   const { orderId } = await context.params;
   const order = await prisma.order.findUnique({
@@ -433,12 +523,23 @@ export async function GET(request: Request, context: CheckoutRouteContext) {
   }
 
   const shippingAddress = readAddressDetails(order.shippingAddress);
-  const metadata =
-    payment.metadata &&
-    typeof payment.metadata === "object" &&
-    !Array.isArray(payment.metadata)
-      ? (payment.metadata as Record<string, unknown>)
-      : null;
+  const metadata = readPaymentMetadata(payment.metadata);
+  const cachedCheckoutSession = readCachedCheckoutSession(metadata);
+
+  if (isCachedCheckoutSessionFresh(cachedCheckoutSession)) {
+    if (cachedCheckoutSession.checkoutQrUrl) {
+      return Response.redirect(cachedCheckoutSession.checkoutQrUrl, 302);
+    }
+
+    return renderQrFallbackPage({
+      deeplink: cachedCheckoutSession.deeplink,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      qrImage: cachedCheckoutSession.qrImage,
+      qrString: cachedCheckoutSession.qrString,
+      statusMessage: cachedCheckoutSession.statusMessage
+    });
+  }
 
   const qrRequest = buildPaywayQrRequest({
     amountMinor: order.totalMinor,
@@ -543,12 +644,52 @@ export async function GET(request: Request, context: CheckoutRouteContext) {
       "description",
       "data.status.message"
     ]);
+    const traceId = readNestedTextValue(payload, [
+      "status.trace_id",
+      "trace_id",
+      "data.status.trace_id"
+    ]);
+    const lifetimeMinutes =
+      typeof qrRequest.body.lifetime === "number" && Number.isFinite(qrRequest.body.lifetime)
+        ? qrRequest.body.lifetime
+        : 60;
+
+    const nextMetadata = {
+      ...(metadata ?? {}),
+      paywayCheckoutSession: buildCachedCheckoutMetadata({
+        checkoutQrUrl,
+        deeplink,
+        lifetimeMinutes,
+        qrImage,
+        qrString,
+        statusMessage,
+        traceId
+      })
+    } satisfies Prisma.InputJsonObject;
 
     if (checkoutQrUrl) {
+      await prisma.payment.update({
+        data: {
+          metadata: nextMetadata
+        },
+        where: {
+          id: payment.id
+        }
+      });
+
       return Response.redirect(checkoutQrUrl, 302);
     }
 
     if (paywayResponse.ok && (deeplink || qrImage || qrString)) {
+      await prisma.payment.update({
+        data: {
+          metadata: nextMetadata
+        },
+        where: {
+          id: payment.id
+        }
+      });
+
       return renderQrFallbackPage({
         deeplink,
         orderId: order.id,
