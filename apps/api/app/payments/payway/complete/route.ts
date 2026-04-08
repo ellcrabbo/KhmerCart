@@ -1,4 +1,4 @@
-import { prisma } from "@khmercart/db";
+import { prisma, reconcileProviderPaymentByOrderId } from "@khmercart/db";
 
 export const runtime = "nodejs";
 
@@ -132,7 +132,38 @@ export async function GET(request: Request) {
     return htmlResponse("Order not found.", 404);
   }
 
-  const payment = order.payments[0] ?? null;
+  const latestPayment = order.payments[0] ?? null;
+
+  if (
+    latestPayment &&
+    (latestPayment.status === "PENDING" ||
+      latestPayment.status === "PROCESSING" ||
+      latestPayment.status === "AUTHORIZED")
+  ) {
+    await reconcileProviderPaymentByOrderId({
+      orderId: order.id,
+      provider: "PAYWAY"
+    });
+  }
+
+  const refreshedOrder = await prisma.order.findUnique({
+    include: {
+      payments: {
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 1,
+        where: {
+          provider: "PAYWAY"
+        }
+      }
+    },
+    where: {
+      id: order.id
+    }
+  });
+
+  const payment = refreshedOrder?.payments[0] ?? latestPayment;
   const statusLabel = payment?.status ?? "PENDING";
   const message =
     payment?.status === "SUCCEEDED"

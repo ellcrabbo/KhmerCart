@@ -1,10 +1,11 @@
 import type { ExternalPaymentProvider, PaymentAdapter } from "./PaymentAdapter";
 import { createBakongAdapter } from "./providers/bakong";
 import {
-  buildPaywayPurchaseForm,
+  buildPaywayQrRequest,
   createPaywayAdapter,
   createPaywayWebhookSignature,
   isPaywayConfigured,
+  resolvePaywayGenerateQrUrl,
   resolvePaywayPurchaseUrl,
   verifyPaywayWebhookSignature
 } from "./providers/payway";
@@ -16,9 +17,10 @@ export * from "./config";
 export * from "./PaymentAdapter";
 export { createHmacSignature } from "./providers/shared";
 export {
-  buildPaywayPurchaseForm,
+  buildPaywayQrRequest,
   createPaywayWebhookSignature,
   isPaywayConfigured,
+  resolvePaywayGenerateQrUrl,
   resolvePaywayPurchaseUrl,
   verifyPaywayWebhookSignature
 };

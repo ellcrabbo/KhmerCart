@@ -1,9 +1,9 @@
 import QRCode from "qrcode";
 import {
-  buildPaywayPurchaseForm,
+  buildPaywayQrRequest,
   isPaywayConfigured,
   readPaymentsConfig,
-  resolvePaywayPurchaseUrl
+  resolvePaywayGenerateQrUrl
 } from "@khmercart/core";
 import { prisma } from "@khmercart/db";
 
@@ -268,6 +268,7 @@ async function renderQrFallbackPage(input: {
   deeplink: string | null;
   orderId: string;
   orderNumber: string;
+  qrImage: string | null;
   qrString: string | null;
   statusMessage: string | null;
 }): Promise<Response> {
@@ -313,11 +314,15 @@ async function renderQrFallbackPage(input: {
             </a>
           </div>
           ${
-            qrSvg
+            input.qrImage || qrSvg
               ? `
                 <div class="qr-shell">
                   <div class="qr-card" aria-label="ABA PayWay QR code">
-                    ${qrSvg}
+                    ${
+                      input.qrImage
+                        ? `<img src="${escapeHtml(input.qrImage)}" alt="ABA PayWay QR code" style="display:block;width:min(100%,18rem);height:auto" />`
+                        : qrSvg
+                    }
                   </div>
                   <p class="qr-caption">Scan this QR in the ABA mobile app if the deeplink does not open.</p>
                 </div>
@@ -428,7 +433,14 @@ export async function GET(request: Request, context: CheckoutRouteContext) {
   }
 
   const shippingAddress = readAddressDetails(order.shippingAddress);
-  const purchaseForm = buildPaywayPurchaseForm({
+  const metadata =
+    payment.metadata &&
+    typeof payment.metadata === "object" &&
+    !Array.isArray(payment.metadata)
+      ? (payment.metadata as Record<string, unknown>)
+      : null;
+
+  const qrRequest = buildPaywayQrRequest({
     amountMinor: order.totalMinor,
     apiKey: paymentsConfig.payway.apiKey!.trim(),
     currency: order.currency,
@@ -444,32 +456,35 @@ export async function GET(request: Request, context: CheckoutRouteContext) {
     merchantId: paymentsConfig.payway.merchantId!.trim(),
     orderId: order.id,
     orderNumber: order.orderNumber,
-    purchaseUrl:
-      payment.metadata &&
-      typeof payment.metadata === "object" &&
-      !Array.isArray(payment.metadata) &&
-      typeof (payment.metadata as Record<string, unknown>).purchaseUrl === "string"
-        ? ((payment.metadata as Record<string, unknown>).purchaseUrl as string)
-        : resolvePaywayPurchaseUrl(paymentsConfig),
-    shippingMinor: order.shippingMinor,
+    paymentOption:
+      metadata && typeof metadata.paymentOption === "string"
+        ? metadata.paymentOption
+        : null,
+    qrImageTemplate:
+      metadata && typeof metadata.qrImageTemplate === "string"
+        ? metadata.qrImageTemplate
+        : null,
+    qrUrl:
+      metadata && typeof metadata.generateQrUrl === "string"
+        ? metadata.generateQrUrl
+        : metadata && typeof metadata.purchaseUrl === "string"
+          ? String(metadata.purchaseUrl).replace(
+              /\/api\/payment-gateway\/v1\/payments\/purchase$/,
+              "/api/payment-gateway/v1/payments/generate-qr"
+            )
+          : resolvePaywayGenerateQrUrl(paymentsConfig),
     webhookBaseUrl: paymentsConfig.webhookBaseUrl
   });
-
-  const purchaseRequestBody = new URLSearchParams();
-
-  for (const [name, value] of Object.entries(purchaseForm.fields)) {
-    purchaseRequestBody.set(name, value);
-  }
 
   let paywayResponse: Response;
 
   try {
-    paywayResponse = await fetch(purchaseForm.actionUrl, {
-      body: purchaseRequestBody,
+    paywayResponse = await fetch(qrRequest.actionUrl, {
+      body: JSON.stringify(qrRequest.body),
       cache: "no-store",
       headers: {
-        accept: "text/html,application/json",
-        "content-type": "application/x-www-form-urlencoded; charset=UTF-8"
+        accept: "application/json,text/html",
+        "content-type": "application/json"
       },
       method: "POST",
       redirect: "follow"
@@ -504,6 +519,12 @@ export async function GET(request: Request, context: CheckoutRouteContext) {
       "checkout_deeplink",
       "data.checkout_deeplink"
     ]);
+    const qrImage = readNestedTextValue(payload, [
+      "qrImage",
+      "qr_image",
+      "data.qrImage",
+      "data.qr_image"
+    ]);
     const qrString = readNestedTextValue(payload, [
       "qrString",
       "qr_string",
@@ -527,11 +548,12 @@ export async function GET(request: Request, context: CheckoutRouteContext) {
       return Response.redirect(checkoutQrUrl, 302);
     }
 
-    if (paywayResponse.ok && (deeplink || qrString)) {
+    if (paywayResponse.ok && (deeplink || qrImage || qrString)) {
       return renderQrFallbackPage({
         deeplink,
         orderId: order.id,
         orderNumber: order.orderNumber,
+        qrImage,
         qrString,
         statusMessage
       });
@@ -548,7 +570,7 @@ export async function GET(request: Request, context: CheckoutRouteContext) {
 
   if (contentType.includes("text/html") || /<!doctype html|<html/i.test(responseText)) {
     return htmlResponse(
-      injectBaseHref(responseText, `${new URL(purchaseForm.actionUrl).origin}/`)
+      injectBaseHref(responseText, `${new URL(qrRequest.actionUrl).origin}/`)
     );
   }
 

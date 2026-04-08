@@ -22,7 +22,7 @@ type PaywayLineItem = {
   currency: SupportedCurrency;
 };
 
-type PaywayPurchaseFormInput = {
+type PaywayQrRequestInput = {
   amountMinor: number;
   apiKey: string;
   currency: SupportedCurrency;
@@ -30,18 +30,20 @@ type PaywayPurchaseFormInput = {
   customerFullName: string | null;
   customerPhone: string | null;
   items: PaywayLineItem[];
+  lifetimeMinutes?: number;
   merchantId: string;
   orderId: string;
   orderNumber: string;
   paymentOption?: string | null;
-  purchaseUrl: string;
+  qrImageTemplate?: string | null;
+  qrUrl: string;
   shippingMinor?: number;
   webhookBaseUrl: string;
 };
 
-type PaywayPurchaseForm = {
+type PaywayQrRequest = {
   actionUrl: string;
-  fields: Record<string, string>;
+  body: Record<string, number | string | null>;
 };
 
 function resolvePaywayBaseUrl(config: PaymentsConfig): string {
@@ -66,6 +68,30 @@ export function resolvePaywayPurchaseUrl(config: PaymentsConfig): string {
   return `${baseUrl}/api/payment-gateway/v1/payments/purchase`;
 }
 
+export function resolvePaywayGenerateQrUrl(config: PaymentsConfig): string {
+  const baseUrl = resolvePaywayBaseUrl(config);
+
+  if (baseUrl.includes("/api/payment-gateway/v1/payments/generate-qr")) {
+    return baseUrl;
+  }
+
+  if (baseUrl.includes("/api/payment-gateway/v1/payments/purchase")) {
+    return baseUrl.replace(
+      /\/api\/payment-gateway\/v1\/payments\/purchase$/,
+      "/api/payment-gateway/v1/payments/generate-qr"
+    );
+  }
+
+  if (baseUrl.includes("/api/payment-gateway/v1/payments/check-transaction-2")) {
+    return baseUrl.replace(
+      /\/api\/payment-gateway\/v1\/payments\/check-transaction-2$/,
+      "/api/payment-gateway/v1/payments/generate-qr"
+    );
+  }
+
+  return `${baseUrl}/api/payment-gateway/v1/payments/generate-qr`;
+}
+
 export function resolvePaywayCheckTransactionUrl(config: PaymentsConfig): string {
   const baseUrl = resolvePaywayBaseUrl(config);
 
@@ -76,6 +102,13 @@ export function resolvePaywayCheckTransactionUrl(config: PaymentsConfig): string
   if (baseUrl.includes("/api/payment-gateway/v1/payments/purchase")) {
     return baseUrl.replace(
       /\/api\/payment-gateway\/v1\/payments\/purchase$/,
+      "/api/payment-gateway/v1/payments/check-transaction-2"
+    );
+  }
+
+  if (baseUrl.includes("/api/payment-gateway/v1/payments/generate-qr")) {
+    return baseUrl.replace(
+      /\/api\/payment-gateway\/v1\/payments\/generate-qr$/,
       "/api/payment-gateway/v1/payments/check-transaction-2"
     );
   }
@@ -182,8 +215,8 @@ function normalizePaywayProviderStatus(
 ): string {
   const normalized = status?.trim().toUpperCase() ?? "";
 
-  if (normalized === "0") {
-    return "APPROVED";
+  if (normalized === "0" || normalized === "00") {
+    return "SUCCEEDED";
   }
 
   if (normalized === "2") {
@@ -275,28 +308,23 @@ export function verifyPaywayWebhookSignature(
   return isMatchingBase64Signature(expectedSignature, signature);
 }
 
-export function buildPaywayPurchaseForm(
-  input: PaywayPurchaseFormInput
-): PaywayPurchaseForm {
+export function buildPaywayQrRequest(
+  input: PaywayQrRequestInput
+): PaywayQrRequest {
   const reqTime = formatPaywayUtcTimestamp(new Date());
   const { firstname, lastname } = splitCustomerName(input.customerFullName);
-  const returnUrl = encodeBase64Utf8(
+  const callbackUrl = encodeBase64Utf8(
     createWebhookUrl(input.webhookBaseUrl, "/api/webhooks/payway")
   );
-  const cancelUrl = createWebhookUrl(
-    input.webhookBaseUrl,
-    `/payments/payway/cancel?orderId=${encodeURIComponent(input.orderId)}`
-  );
-  const continueSuccessUrl = createWebhookUrl(
-    input.webhookBaseUrl,
-    `/payments/payway/complete?orderId=${encodeURIComponent(input.orderId)}`
-  );
   const items = encodePaywayItems(input.items);
-  const shipping = formatPaywayAmount(input.shippingMinor ?? 0, input.currency);
   const amount = formatPaywayAmount(input.amountMinor, input.currency);
   const email = normalizePaywayText(input.customerEmail, 50);
   const phone = normalizePaywayText(input.customerPhone, 20);
-  const paymentOption = normalizePaywayText(input.paymentOption, 20);
+  const paymentOption =
+    normalizePaywayText(input.paymentOption, 20) || "abapay_khqr";
+  const qrImageTemplate =
+    normalizePaywayText(input.qrImageTemplate, 32) || "template3_color";
+  const lifetime = input.lifetimeMinutes ?? 60;
   const customFields = encodeBase64Utf8(
     JSON.stringify({
       orderId: input.orderId,
@@ -304,68 +332,56 @@ export function buildPaywayPurchaseForm(
       provider: "PAYWAY"
     })
   );
-  const returnParams = input.orderId;
-  const skipSuccessPage = "1";
-
-  const fields: Record<string, string> = {
-    amount,
-    cancel_url: cancelUrl,
-    continue_success_url: continueSuccessUrl,
+  const body: Record<string, number | string | null> = {
+    amount: input.currency === "USD" ? Number(amount) : Number.parseInt(amount, 10),
+    callback_url: callbackUrl,
     currency: input.currency,
     custom_fields: customFields,
     email,
-    firstname,
+    first_name: firstname,
     hash: "",
     items,
-    lastname,
+    last_name: lastname,
+    lifetime,
     merchant_id: input.merchantId,
+    payment_option: paymentOption,
+    payout: null,
     phone,
+    purchase_type: "purchase",
+    qr_image_template: qrImageTemplate,
     req_time: reqTime,
-    return_params: returnParams,
-    return_url: returnUrl,
-    shipping,
-    skip_success_page: skipSuccessPage,
+    return_deeplink: null,
+    return_params: input.orderId,
     tran_id: input.orderNumber,
-    type: "purchase",
-    view_type: "hosted_view"
   };
 
-  if (paymentOption) {
-    fields.payment_option = paymentOption;
-  }
-
   const signaturePayload = [
-    fields.req_time,
-    fields.merchant_id,
-    fields.tran_id,
-    fields.amount,
-    fields.items,
-    fields.shipping,
-    fields.firstname,
-    fields.lastname,
-    fields.email,
-    fields.phone,
-    fields.type,
-    fields.payment_option ?? "",
-    fields.return_url,
-    fields.cancel_url,
-    fields.continue_success_url,
-    "",
-    fields.currency,
-    fields.custom_fields,
-    fields.return_params,
-    "",
-    "",
-    "",
-    "",
-    fields.skip_success_page
+    String(body.req_time ?? ""),
+    String(body.merchant_id ?? ""),
+    String(body.tran_id ?? ""),
+    String(body.amount ?? ""),
+    String(body.items ?? ""),
+    String(body.first_name ?? ""),
+    String(body.last_name ?? ""),
+    String(body.email ?? ""),
+    String(body.phone ?? ""),
+    String(body.purchase_type ?? ""),
+    String(body.payment_option ?? ""),
+    String(body.callback_url ?? ""),
+    String(body.return_deeplink ?? ""),
+    String(body.currency ?? ""),
+    String(body.custom_fields ?? ""),
+    String(body.return_params ?? ""),
+    String(body.payout ?? ""),
+    String(body.lifetime ?? ""),
+    String(body.qr_image_template ?? "")
   ].join("");
 
-  fields.hash = createPaywayBase64Hmac(signaturePayload, input.apiKey);
+  body.hash = createPaywayBase64Hmac(signaturePayload, input.apiKey);
 
   return {
-    actionUrl: input.purchaseUrl,
-    fields
+    actionUrl: input.qrUrl,
+    body
   };
 }
 
@@ -375,7 +391,7 @@ export function createPaywayAdapter(config: PaymentsConfig): PaymentAdapter {
   return {
     provider: "PAYWAY",
     async createPaymentIntent(input) {
-      const reference = `PAYWAY-${input.orderNumber}`;
+      const reference = input.orderNumber;
 
       if (!isPaywayConfigured(config)) {
         return {
@@ -385,7 +401,7 @@ export function createPaywayAdapter(config: PaymentsConfig): PaymentAdapter {
           ),
           displayName: "ABA PayWay",
           instructions:
-            "Redirect the buyer to the PayWay checkout URL and wait for payment confirmation.",
+            "Show the buyer the ABA PayWay QR checkout page and wait for payment confirmation.",
           metadata: {
             apiKeyPresent: Boolean(providerConfig.apiKey),
             integrationMode: config.paymentsEnv,
@@ -408,17 +424,21 @@ export function createPaywayAdapter(config: PaymentsConfig): PaymentAdapter {
         ),
         displayName: "ABA PayWay",
         instructions:
-          "Redirect the buyer to the PayWay checkout URL and wait for payment confirmation.",
+          "Show the buyer the ABA PayWay QR checkout page and wait for payment confirmation.",
         metadata: {
+          callbackUrl: createWebhookUrl(input.webhookBaseUrl, "/api/webhooks/payway"),
+          generateQrUrl: resolvePaywayGenerateQrUrl(config),
           integrationMode: config.paymentsEnv,
           merchantId: providerConfig.merchantId ?? null,
-          purchaseUrl: resolvePaywayPurchaseUrl(config),
+          merchantRefNo: input.orderNumber,
+          paymentOption: "abapay_khqr",
+          qrImageTemplate: "template3_color",
           stub: false,
           transactionId: input.orderNumber,
           webhookUrl: createWebhookUrl(input.webhookBaseUrl, "/api/webhooks/payway")
         },
         provider: "PAYWAY",
-        providerPaymentId: input.orderNumber,
+        providerPaymentId: null,
         qrPayload: null,
         reference,
         status: "PENDING"
@@ -426,17 +446,23 @@ export function createPaywayAdapter(config: PaymentsConfig): PaymentAdapter {
     },
     parseEvent(rawBody) {
       const payload = parseJsonObject(rawBody);
-      const resolvedStatus =
-        normalizePaywayProviderStatus(
-          pickString(payload, [
-            "payment_status",
-            "data.payment_status",
-            "status",
-            "paymentStatus",
-            "transactionStatus",
-            "data.payment_status_code"
-          ])
-        ) || "PENDING";
+      const explicitPaymentStatus = pickString(payload, [
+        "payment_status",
+        "data.payment_status",
+        "paymentStatus",
+        "transactionStatus",
+        "data.payment_status_code"
+      ]);
+      const isQrCallback = Boolean(
+        pickString(payload, ["merchant_ref_no", "merchantRefNo"])
+      );
+      const resolvedStatus = explicitPaymentStatus
+        ? normalizePaywayProviderStatus(explicitPaymentStatus) || "PENDING"
+        : isQrCallback
+          ? "PENDING"
+          : normalizePaywayProviderStatus(
+              pickString(payload, ["status", "status.code", "statusCode", "status_code"])
+            ) || "PENDING";
 
       return {
         eventType:
@@ -445,6 +471,8 @@ export function createPaywayAdapter(config: PaymentsConfig): PaymentAdapter {
         metadata: payload,
         orderRef:
           pickString(payload, [
+            "merchant_ref_no",
+            "merchantRefNo",
             "return_params",
             "orderRef",
             "orderId",
@@ -453,17 +481,25 @@ export function createPaywayAdapter(config: PaymentsConfig): PaymentAdapter {
             "tran_id"
           ]) ?? null,
         providerEventId:
-          pickString(payload, ["eventId", "id", "tran_id"]) ??
+          pickString(payload, ["eventId", "id", "tran_id", "merchant_ref_no"]) ??
           buildFallbackProviderEventId("PAYWAY", rawBody),
         providerPaymentId:
-          pickString(payload, ["paymentId", "transactionId", "txnId", "tran_id"]) ?? null,
+          pickString(payload, ["tran_id", "paymentId", "transactionId", "txnId"]) ?? null,
         status: normalizeProviderStatus(resolvedStatus)
       };
     },
     async reconcilePayment(input) {
       const apiKey = providerConfig.apiKey?.trim();
       const merchantId = providerConfig.merchantId?.trim();
-      const transactionId = input.providerPaymentId ?? input.reference ?? null;
+      const transactionId =
+        input.providerPaymentId ??
+        input.reference ??
+        (input.metadata &&
+        typeof input.metadata === "object" &&
+        !Array.isArray(input.metadata) &&
+        typeof input.metadata.merchantRefNo === "string"
+          ? input.metadata.merchantRefNo
+          : null);
 
       if (!apiKey || !merchantId || !transactionId) {
         return {

@@ -413,4 +413,86 @@ describe("payment webhooks", () => {
       }
     }
   });
+
+  it("tracks PayWay QR callbacks by merchant_ref_no and stores the gateway transaction id", async () => {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const previousSecret = process.env.PAYWAY_WEBHOOK_SECRET;
+
+    delete process.env.PAYWAY_WEBHOOK_SECRET;
+
+    const { product, seller, sellerUser } = await createSellerFixture({
+      inventoryQuantity: 1,
+      suffix
+    });
+    const buyer = await createBuyerUser(suffix);
+    const variantId = product.variants[0]?.id;
+
+    expect(variantId).toBeTruthy();
+
+    try {
+      await mutateBuyerCartItem({
+        action: "ADD",
+        quantity: 1,
+        userId: buyer.id,
+        variantId: variantId!
+      });
+
+      const checkout = await checkoutBuyerCart({
+        idempotencyKey: `payway-qr-${suffix}`,
+        paymentMethod: "PAYWAY",
+        shippingAddress: createShippingAddress(suffix),
+        userId: buyer.id
+      });
+
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: {
+          orderId: checkout.orderId
+        }
+      });
+
+      const rawBody = JSON.stringify({
+        apv: "123456",
+        merchant_ref_no: checkout.orderNumber,
+        status: "0",
+        tran_id: `gateway-${suffix}`
+      });
+
+      const response = await paywayWebhookPost(
+        new Request("http://localhost:3002/api/webhooks/payway", {
+          body: rawBody,
+          headers: {
+            "content-type": "application/json"
+          },
+          method: "POST"
+        })
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        alreadyProcessed: false,
+        paymentId: payment.id
+      });
+
+      const refreshedPayment = await prisma.payment.findUniqueOrThrow({
+        where: {
+          id: payment.id
+        }
+      });
+
+      expect(refreshedPayment.providerPaymentId).toBe(`gateway-${suffix}`);
+      expect(refreshedPayment.status).toBe("PENDING");
+    } finally {
+      if (previousSecret) {
+        process.env.PAYWAY_WEBHOOK_SECRET = previousSecret;
+      } else {
+        delete process.env.PAYWAY_WEBHOOK_SECRET;
+      }
+
+      await cleanupFixture({
+        buyerIds: [buyer.id],
+        sellerIds: [seller.id],
+        userIds: [buyer.id, sellerUser.id]
+      });
+    }
+  });
 });

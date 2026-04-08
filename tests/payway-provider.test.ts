@@ -156,7 +156,7 @@ async function createCheckoutFixture(suffix: string) {
       currency: order.currency,
       method: "PAYWAY",
       metadata: {
-        purchaseUrl: "https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase"
+        generateQrUrl: "https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/generate-qr"
       },
       orderId: order.id,
       provider: "PAYWAY",
@@ -240,7 +240,7 @@ describe("PayWay provider", () => {
     ).toBe(true);
   });
 
-  it("redirects buyers to PayWay's hosted QR checkout when the purchase API returns JSON", async () => {
+  it("redirects buyers to PayWay's hosted QR checkout when the QR API returns a checkout URL", async () => {
     const suffix = crypto.randomUUID().slice(0, 8);
     const previousMerchantId = process.env.PAYWAY_MERCHANT_ID;
     const previousApiKey = process.env.PAYWAY_API_KEY;
@@ -287,19 +287,18 @@ describe("PayWay provider", () => {
       );
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-        "https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase"
+        "https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/generate-qr"
       );
       expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
-      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
-        "merchant_id=ec000002"
-      );
-      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
-        `tran_id=${fixture.order.orderNumber}`
-      );
-      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("return_url=");
-      expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
-        "continue_success_url="
-      );
+      const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<
+        string,
+        string | number | null
+      >;
+
+      expect(requestBody.merchant_id).toBe("ec000002");
+      expect(requestBody.tran_id).toBe(fixture.order.orderNumber);
+      expect(requestBody.payment_option).toBe("abapay_khqr");
+      expect(requestBody.callback_url).toEqual(expect.any(String));
     } finally {
       vi.unstubAllGlobals();
 
@@ -348,6 +347,7 @@ describe("PayWay provider", () => {
       new Response(
         JSON.stringify({
           abapay_deeplink: "abamobilebank://payway/test",
+          qrImage: "data:image/png;base64,AAA",
           qrString: "000201010212PAYWAYTEST6304ABCD",
           status: {
             code: "00",
@@ -386,7 +386,7 @@ describe("PayWay provider", () => {
       expect(html).toContain("Continue in ABA PayWay");
       expect(html).toContain("abamobilebank://payway/test");
       expect(html).toContain("Scan this QR in the ABA mobile app");
-      expect(html).toContain("<svg");
+      expect(html).toContain("data:image/png;base64,AAA");
       expect(html).toContain("000201010212PAYWAYTEST6304ABCD");
     } finally {
       vi.unstubAllGlobals();

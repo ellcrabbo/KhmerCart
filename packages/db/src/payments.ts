@@ -433,6 +433,106 @@ export async function createCheckoutPaymentRecord(
   return mapPaymentRowToCheckoutResult(payment);
 }
 
+export async function reconcileProviderPaymentByOrderId(input: {
+  orderId: string;
+  provider: ExternalPaymentProvider;
+}): Promise<Payment | null> {
+  const payment = await prisma.payment.findFirst({
+    include: paymentWithOrderInclude,
+    orderBy: {
+      createdAt: "desc"
+    },
+    where: {
+      orderId: input.orderId,
+      provider: input.provider
+    }
+  });
+
+  if (!payment) {
+    return null;
+  }
+
+  const adapter = createPaymentAdapter(input.provider, process.env);
+
+  if (!adapter.reconcilePayment) {
+    return payment;
+  }
+
+  const reconciliation = await adapter.reconcilePayment({
+    amountMinor: payment.amountMinor,
+    currency: payment.currency,
+    metadata:
+      payment.metadata &&
+      typeof payment.metadata === "object" &&
+      !Array.isArray(payment.metadata)
+        ? (payment.metadata as Record<string, unknown>)
+        : null,
+    orderId: payment.orderId,
+    paymentId: payment.id,
+    providerPaymentId: payment.providerPaymentId,
+    reference: payment.providerReference
+  });
+
+  if (!reconciliation) {
+    return payment;
+  }
+
+  const nextStatus = mapProviderStatusToPaymentStatus(reconciliation.status);
+  const now = new Date();
+  const nextMetadata = {
+    ...(payment.metadata &&
+    typeof payment.metadata === "object" &&
+    !Array.isArray(payment.metadata)
+      ? (payment.metadata as Record<string, unknown>)
+      : {}),
+    ...(reconciliation.metadata ?? {}),
+    lastReconciliationRunAt: now.toISOString()
+  };
+
+  const updatedPayment = await prisma.payment.update({
+    data: {
+      failedAt:
+        nextStatus === "FAILED" ||
+        nextStatus === "CANCELLED" ||
+        nextStatus === "EXPIRED"
+          ? now
+          : null,
+      lastReconciledAt: now,
+      metadata: toPrismaJson(nextMetadata),
+      providerPaymentId:
+        reconciliation.providerPaymentId ?? payment.providerPaymentId,
+      status: nextStatus
+    },
+    where: {
+      id: payment.id
+    }
+  });
+
+  if (
+    nextStatus === "SUCCEEDED" &&
+    payment.order.state !== OrderState.PAYMENT_CONFIRMED
+  ) {
+    await transitionOrder(
+      payment.orderId,
+      "PAYMENT_CONFIRMED",
+      {
+        label: payment.provider,
+        type: "PAYMENT_PROVIDER"
+      },
+      {
+        message: `Payment reconciliation confirmed ${payment.provider} payment.`,
+        metadata: {
+          paymentId: payment.id,
+          provider: payment.provider,
+          reconciliationStatus: reconciliation.status
+        }
+      }
+    );
+  }
+
+  return updatedPayment;
+}
+
 export async function processPaymentWebhook(
   input: ProcessPaymentWebhookInput
 ): Promise<ProcessPaymentWebhookResult> {
