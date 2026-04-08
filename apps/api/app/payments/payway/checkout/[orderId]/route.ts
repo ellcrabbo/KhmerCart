@@ -29,6 +29,11 @@ type CachedPaywayCheckoutSession = {
   traceId: string | null;
 };
 
+type TlvSegment = {
+  id: string;
+  value: string;
+};
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -161,6 +166,14 @@ function renderHtmlPage(input: {
         margin: 0;
         text-align: center;
       }
+      .warning {
+        margin-top: 1rem;
+        border-radius: 1rem;
+        border: 1px solid rgba(194, 65, 12, 0.18);
+        background: rgba(255, 237, 213, 0.78);
+        color: #9a3412;
+        padding: 1rem 1.1rem;
+      }
       pre {
         margin: 1.5rem 0 0;
         border-radius: 1rem;
@@ -250,6 +263,67 @@ function readNestedTextValue(
   return null;
 }
 
+function parseTlvSegments(value: string): TlvSegment[] {
+  const segments: TlvSegment[] = [];
+  let offset = 0;
+
+  while (offset + 4 <= value.length) {
+    const id = value.slice(offset, offset + 2);
+    const rawLength = value.slice(offset + 2, offset + 4);
+    const length = Number.parseInt(rawLength, 10);
+
+    if (!Number.isFinite(length) || length < 0) {
+      break;
+    }
+
+    const valueStart = offset + 4;
+    const valueEnd = valueStart + length;
+
+    if (valueEnd > value.length) {
+      break;
+    }
+
+    segments.push({
+      id,
+      value: value.slice(valueStart, valueEnd)
+    });
+
+    offset = valueEnd;
+
+    if (id === "63") {
+      break;
+    }
+  }
+
+  return segments;
+}
+
+export function detectPaywaySandboxPlaceholderQr(
+  qrString: string | null | undefined
+): boolean {
+  if (!qrString) {
+    return false;
+  }
+
+  const merchantTemplate = parseTlvSegments(qrString).find(
+    (segment) => segment.id === "30"
+  );
+
+  if (!merchantTemplate) {
+    return false;
+  }
+
+  const merchantSegments = parseTlvSegments(merchantTemplate.value);
+  const bakongId =
+    merchantSegments.find((segment) => segment.id === "00")?.value ?? null;
+  const merchantAccountId =
+    merchantSegments.find((segment) => segment.id === "01")?.value ?? null;
+
+  return (
+    bakongId === "abaakhppxxx@abaa" || merchantAccountId === "111111111111111"
+  );
+}
+
 function parsePaywayJsonPayload(rawValue: string): PaywayResponseRecord | null {
   try {
     const parsed = JSON.parse(rawValue) as unknown;
@@ -282,6 +356,7 @@ async function renderQrFallbackPage(input: {
   orderNumber: string;
   qrImage: string | null;
   qrString: string | null;
+  sandboxWarning: string | null;
   statusMessage: string | null;
 }): Promise<Response> {
   let qrSvg: string | null = null;
@@ -306,13 +381,20 @@ async function renderQrFallbackPage(input: {
           <span class="eyebrow">KhmerCart Payments</span>
           <h1>Continue in ABA PayWay</h1>
           <p>
-            PayWay returned a QR checkout for
-            <strong>${escapeHtml(input.orderNumber)}</strong>. Open the checkout in ABA,
-            or use the QR payload below if you need to complete it manually.
+            PayWay generated a QR checkout for
+            <strong>${escapeHtml(input.orderNumber)}</strong>. This only means the QR was
+            created. KhmerCart will keep the payment pending until ABA confirms the
+            charge.
           </p>
           ${
             input.statusMessage
-              ? `<p><strong>Status:</strong> ${escapeHtml(input.statusMessage)}</p>`
+              ? `<p><strong>QR generation:</strong> ${escapeHtml(input.statusMessage)}</p>`
+              : ""
+          }
+          <p><strong>Current payment status:</strong> Awaiting payment confirmation.</p>
+          ${
+            input.sandboxWarning
+              ? `<div class="warning">${escapeHtml(input.sandboxWarning)}</div>`
               : ""
           }
           <div class="actions">
@@ -456,6 +538,14 @@ function buildCachedCheckoutMetadata(input: {
   };
 }
 
+function buildSandboxWarning(qrString: string | null): string | null {
+  if (!detectPaywaySandboxPlaceholderQr(qrString)) {
+    return null;
+  }
+
+  return "PayWay sandbox returned a placeholder ABA merchant QR payload for this order, so the normal ABA mobile app will reject it with “Transaction not found”. KhmerCart is still waiting for a real payment callback. To run a true scan-and-pay test, ABA needs to enable a QR-payable sandbox profile for this merchant or provide production-ready QR credentials.";
+}
+
 export async function GET(request: Request, context: CheckoutRouteContext) {
   const { orderId } = await context.params;
   const order = await prisma.order.findUnique({
@@ -537,6 +627,7 @@ export async function GET(request: Request, context: CheckoutRouteContext) {
       orderNumber: order.orderNumber,
       qrImage: cachedCheckoutSession.qrImage,
       qrString: cachedCheckoutSession.qrString,
+      sandboxWarning: buildSandboxWarning(cachedCheckoutSession.qrString),
       statusMessage: cachedCheckoutSession.statusMessage
     });
   }
@@ -696,6 +787,7 @@ export async function GET(request: Request, context: CheckoutRouteContext) {
         orderNumber: order.orderNumber,
         qrImage,
         qrString,
+        sandboxWarning: buildSandboxWarning(qrString),
         statusMessage
       });
     }

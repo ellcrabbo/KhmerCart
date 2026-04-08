@@ -5,7 +5,10 @@ import {
   createPaywayWebhookSignature,
   verifyPaywayWebhookSignature
 } from "@khmercart/core";
-import { GET as paywayCheckoutGet } from "../apps/api/app/payments/payway/checkout/[orderId]/route";
+import {
+  detectPaywaySandboxPlaceholderQr,
+  GET as paywayCheckoutGet
+} from "../apps/api/app/payments/payway/checkout/[orderId]/route";
 
 function createUniquePhone(prefix: string, suffix: string) {
   const digits = createHash("sha256")
@@ -223,6 +226,20 @@ async function cleanupFixture(input: {
 }
 
 describe("PayWay provider", () => {
+  it("detects placeholder sandbox qr payloads", () => {
+    expect(
+      detectPaywaySandboxPlaceholderQr(
+        "30510016abaakhppxxx@abaa01151111111111111110208ABA Bank6304ABCD"
+      )
+    ).toBe(true);
+
+    expect(
+      detectPaywaySandboxPlaceholderQr(
+        "30510016abcdefghijklmnop01151234567890123450208ABA Bank6304ABCD"
+      )
+    ).toBe(false);
+  });
+
   it("verifies the official callback signature format", () => {
     const payload = {
       apv: "619195",
@@ -385,6 +402,7 @@ describe("PayWay provider", () => {
 
       expect(html).toContain("Continue in ABA PayWay");
       expect(html).toContain("abamobilebank://payway/test");
+      expect(html).toContain("Awaiting payment confirmation");
       expect(html).toContain("Scan this QR in the ABA mobile app");
       expect(html).toContain("data:image/png;base64,AAA");
       expect(html).toContain("000201010212PAYWAYTEST6304ABCD");
@@ -505,6 +523,95 @@ describe("PayWay provider", () => {
 
       expect(session?.traceId).toBe("trace-cached");
       expect(session?.qrString).toBe("000201010212PAYWAYCACHED6304ABCD");
+    } finally {
+      vi.unstubAllGlobals();
+
+      if (previousMerchantId) {
+        process.env.PAYWAY_MERCHANT_ID = previousMerchantId;
+      } else {
+        delete process.env.PAYWAY_MERCHANT_ID;
+      }
+
+      if (previousApiKey) {
+        process.env.PAYWAY_API_KEY = previousApiKey;
+      } else {
+        delete process.env.PAYWAY_API_KEY;
+      }
+
+      if (previousBaseUrl) {
+        process.env.PAYWAY_BASE_URL = previousBaseUrl;
+      } else {
+        delete process.env.PAYWAY_BASE_URL;
+      }
+
+      if (previousWebhookBaseUrl) {
+        process.env.WEBHOOK_BASE_URL = previousWebhookBaseUrl;
+      } else {
+        delete process.env.WEBHOOK_BASE_URL;
+      }
+
+      await cleanupFixture({
+        buyerId: fixture.buyer.id,
+        orderId: fixture.order.id,
+        productId: fixture.product.id,
+        sellerId: fixture.seller.id,
+        sellerUserId: fixture.sellerUser.id
+      });
+    }
+  });
+
+  it("warns when PayWay returns a placeholder sandbox qr payload", async () => {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const previousMerchantId = process.env.PAYWAY_MERCHANT_ID;
+    const previousApiKey = process.env.PAYWAY_API_KEY;
+    const previousBaseUrl = process.env.PAYWAY_BASE_URL;
+    const previousWebhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+    const fixture = await createCheckoutFixture(suffix);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          abapay_deeplink: "abamobilebank://payway/placeholder-test",
+          qrImage: "data:image/png;base64,PLACEHOLDER",
+          qrString:
+            "30510016abaakhppxxx@abaa01151111111111111110208ABA Bank6304ABCD",
+          status: {
+            code: "0",
+            message: "Success."
+          }
+        }),
+        {
+          headers: {
+            "content-type": "application/json"
+          },
+          status: 200
+        }
+      )
+    );
+
+    process.env.PAYWAY_MERCHANT_ID = "ec000002";
+    process.env.PAYWAY_API_KEY = "sandbox-public-key";
+    delete process.env.PAYWAY_BASE_URL;
+    process.env.WEBHOOK_BASE_URL = "https://api.khmercart.shop";
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const response = await paywayCheckoutGet(
+        new Request(`https://api.khmercart.shop/payments/payway/checkout/${fixture.order.id}`),
+        {
+          params: Promise.resolve({
+            orderId: fixture.order.id
+          })
+        }
+      );
+
+      expect(response.status).toBe(200);
+
+      const html = await response.text();
+
+      expect(html).toContain("QR generation:");
+      expect(html).toContain("Awaiting payment confirmation");
+      expect(html).toContain("placeholder ABA merchant QR payload");
+      expect(html).toContain("Transaction not found");
     } finally {
       vi.unstubAllGlobals();
 
