@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 
 type SaveShipmentBody = {
   carrier?: string;
+  carrierLabel?: string;
   message?: string;
   status?: string;
   trackingNumber?: string;
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json(
       await saveSellerShipment({
         carrier: body.carrier,
+        carrierLabel: body.carrierLabel,
         message: body.message,
         orderId,
         status: body.status,

@@ -1,5 +1,6 @@
 import {
   createShippingAdapter,
+  formatShippingCarrierLabel,
   isShippingCarrier,
   readShippingConfig,
   type OrderLifecycleState,
@@ -101,6 +102,7 @@ export type ShipmentTimelineEvent = {
 
 export type ShipmentSummary = {
   carrier: string | null;
+  carrierCode: ShippingCarrier | null;
   id: string;
   providerShipmentId: string | null;
   shippedAt: string | null;
@@ -151,6 +153,7 @@ export type BuyerOrderTrackingData = {
 
 export type SaveSellerShipmentInput = {
   carrier?: string | null;
+  carrierLabel?: string | null;
   message?: string | null;
   orderId: string;
   status?: string | null;
@@ -161,6 +164,24 @@ export type SaveSellerShipmentInput = {
 
 function serializeDate(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
+}
+
+function normalizeOptionalText(value: string | null | undefined): string | null {
+  const normalized = value?.trim();
+
+  return normalized ? normalized : null;
+}
+
+function readProviderCarrierFromMetadata(metadata: Prisma.JsonValue | null): ShippingCarrier | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+
+  const providerCarrier = (metadata as Record<string, unknown>).providerCarrier;
+
+  return typeof providerCarrier === "string" && isShippingCarrier(providerCarrier)
+    ? providerCarrier
+    : null;
 }
 
 function mapShipmentTimelineEvent(event: ShipmentEventRecord): ShipmentTimelineEvent {
@@ -181,8 +202,12 @@ function mapShipmentSummary(
     return null;
   }
 
+  const carrierCode =
+    readProviderCarrierFromMetadata(shipment.metadata ?? null) ?? parseCarrier(shipment.carrier);
+
   return {
-    carrier: shipment.carrier ?? null,
+    carrier: formatShippingCarrierLabel(shipment.carrier ?? carrierCode) ?? null,
+    carrierCode,
     id: shipment.id,
     providerShipmentId: shipment.providerShipmentId ?? null,
     shippedAt: serializeDate(shipment.shippedAt),
@@ -339,6 +364,32 @@ function buildShipmentUpdateMessage(input: {
   return `${carrierFragment}${input.status.replaceAll("_", " ")}${trackingFragment}`.trim();
 }
 
+function resolveStoredCarrierValue(input: {
+  existingStoredCarrier: string | null;
+  requestedCarrierCode: ShippingCarrier | null;
+  requestedCarrierLabel: string | null;
+}): string | null {
+  if (input.requestedCarrierCode === "OTHER") {
+    return (
+      input.requestedCarrierLabel ??
+      (input.existingStoredCarrier &&
+      !parseCarrier(input.existingStoredCarrier)
+        ? input.existingStoredCarrier
+        : "Manual delivery")
+    );
+  }
+
+  if (input.requestedCarrierCode) {
+    return input.requestedCarrierCode;
+  }
+
+  if (input.requestedCarrierLabel) {
+    return input.requestedCarrierLabel;
+  }
+
+  return normalizeOptionalText(input.existingStoredCarrier);
+}
+
 function mergeShipmentMetadata(
   currentMetadata: Prisma.JsonValue | null,
   nextMetadata: Record<string, unknown> | null
@@ -434,10 +485,18 @@ export async function saveSellerShipment(
       );
     }
 
-    const nextCarrier = parseCarrier(input.carrier) ?? parseCarrier(order.shipment?.carrier);
-    const nextTrackingNumber =
-      input.trackingNumber?.trim() ||
-      order.shipment?.trackingNumber?.trim() ||
+    const requestedCarrierCode = parseCarrier(input.carrier);
+    const existingCarrierCode =
+      readProviderCarrierFromMetadata(order.shipment?.metadata ?? null) ??
+      parseCarrier(order.shipment?.carrier);
+    const nextCarrierCode = requestedCarrierCode ?? existingCarrierCode;
+    const nextCarrier = resolveStoredCarrierValue({
+      existingStoredCarrier: order.shipment?.carrier ?? null,
+      requestedCarrierCode,
+      requestedCarrierLabel: normalizeOptionalText(input.carrierLabel)
+    });
+    const nextTrackingNumber = normalizeOptionalText(input.trackingNumber) ??
+      normalizeOptionalText(order.shipment?.trackingNumber) ??
       null;
 
     if (!order.shipment && (!nextCarrier || !nextTrackingNumber)) {
@@ -458,13 +517,15 @@ export async function saveSellerShipment(
 
     let providerShipmentId = order.shipment?.providerShipmentId ?? null;
     let resolvedTrackingUrl =
-      input.trackingUrl?.trim() || order.shipment?.trackingUrl?.trim() || null;
+      normalizeOptionalText(input.trackingUrl) ??
+      normalizeOptionalText(order.shipment?.trackingUrl) ??
+      null;
     let providerMetadata: Record<string, unknown> | null = null;
 
-    if (nextCarrier && nextCarrier !== "OTHER" && nextTrackingNumber) {
-      const adapter = createShippingAdapter(nextCarrier);
+    if (nextCarrierCode && nextCarrierCode !== "OTHER" && nextTrackingNumber) {
+      const adapter = createShippingAdapter(nextCarrierCode);
       const providerShipment = await adapter.createShipment({
-        carrier: nextCarrier,
+        carrier: nextCarrierCode,
         orderId: order.id,
         trackingNumber: nextTrackingNumber
       });
@@ -474,11 +535,19 @@ export async function saveSellerShipment(
       providerMetadata = providerShipment.metadata;
     }
 
+    const nextShipmentMetadata =
+      nextCarrierCode || providerMetadata
+        ? {
+            ...(nextCarrierCode ? { providerCarrier: nextCarrierCode } : {}),
+            ...(providerMetadata ?? {})
+          }
+        : null;
+
     const shipment = await tx.shipment.upsert({
       create: {
         carrier: nextCarrier,
         deliveredAt: nextStatus === "DELIVERED" ? new Date() : null,
-        metadata: mergeShipmentMetadata(null, providerMetadata),
+        metadata: mergeShipmentMetadata(null, nextShipmentMetadata),
         orderId: order.id,
         providerShipmentId,
         sellerId: seller.id,
@@ -496,7 +565,7 @@ export async function saveSellerShipment(
           nextStatus === "DELIVERED"
             ? new Date()
             : order.shipment?.deliveredAt ?? undefined,
-        metadata: mergeShipmentMetadata(order.shipment?.metadata ?? null, providerMetadata),
+        metadata: mergeShipmentMetadata(order.shipment?.metadata ?? null, nextShipmentMetadata),
         providerShipmentId,
         shippedAt:
           nextStatus === "HANDED_TO_CARRIER" || nextStatus === "IN_TRANSIT"

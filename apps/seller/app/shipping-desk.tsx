@@ -10,6 +10,7 @@ type ShippingDeskProps = {
 
 type ShipmentDraft = {
   carrier: string;
+  carrierLabel: string;
   message: string;
   trackingNumber: string;
   trackingUrl: string;
@@ -17,12 +18,59 @@ type ShipmentDraft = {
 
 const EMPTY_MESSAGE = "No orders are waiting on shipping updates.";
 
+function formatCarrierLabel(value: string) {
+  if (value === "JNT") {
+    return "J&T Express";
+  }
+
+  if (value === "GRABEXPRESS") {
+    return "GrabExpress";
+  }
+
+  if (value === "CAMBODIA_POST") {
+    return "Cambodia Post";
+  }
+
+  if (value === "OTHER") {
+    return "Manual delivery";
+  }
+
+  return value;
+}
+
+function readInitialCarrierLabel(data: SellerShippingQueueData["orders"][number]) {
+  if (!data.shipment?.carrier) {
+    return "";
+  }
+
+  if (!data.shipment.carrierCode || data.shipment.carrierCode === "OTHER") {
+    return data.shipment.carrier === "Manual delivery" ? "" : data.shipment.carrier;
+  }
+
+  return "";
+}
+
+function readCarrierOptions(
+  data: SellerShippingQueueData,
+  order: SellerShippingQueueData["orders"][number]
+) {
+  if (
+    order.shipment?.carrierCode &&
+    !data.carriers.includes(order.shipment.carrierCode)
+  ) {
+    return [order.shipment.carrierCode, ...data.carriers];
+  }
+
+  return data.carriers;
+}
+
 function createInitialDrafts(data: SellerShippingQueueData): Record<string, ShipmentDraft> {
   return Object.fromEntries(
     data.orders.map((order) => [
       order.orderId,
       {
-        carrier: order.shipment?.carrier ?? data.carriers[0] ?? "OTHER",
+        carrier: order.shipment?.carrierCode ?? data.carriers[0] ?? "OTHER",
+        carrierLabel: readInitialCarrierLabel(order),
         message: "",
         trackingNumber: order.shipment?.trackingNumber ?? "",
         trackingUrl: order.shipment?.trackingUrl ?? ""
@@ -81,6 +129,8 @@ export function ShippingDesk({ initialShipping }: ShippingDeskProps) {
     const response = await fetch(`/api/orders/${input.orderId}/shipment`, {
       body: JSON.stringify({
         carrier: draft?.carrier || undefined,
+        carrierLabel:
+          draft?.carrier === "OTHER" ? draft?.carrierLabel || undefined : undefined,
         message: draft?.message || undefined,
         status: input.status,
         trackingNumber: draft?.trackingNumber || undefined,
@@ -127,8 +177,10 @@ export function ShippingDesk({ initialShipping }: ShippingDeskProps) {
       ) : (
         <div className="mt-6 grid gap-5">
           {initialShipping.orders.map((order) => {
+            const carrierOptions = readCarrierOptions(initialShipping, order);
             const draft = drafts[order.orderId] ?? {
-              carrier: initialShipping.carriers[0] ?? "OTHER",
+              carrier: carrierOptions[0] ?? "OTHER",
+              carrierLabel: "",
               message: "",
               trackingNumber: "",
               trackingUrl: ""
@@ -167,7 +219,7 @@ export function ShippingDesk({ initialShipping }: ShippingDeskProps) {
                 <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2 text-sm text-stone-700">
-                      Carrier
+                      Delivery method
                       <select
                         className="rounded-2xl border border-black/10 bg-white px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
                         onChange={(event) =>
@@ -181,13 +233,33 @@ export function ShippingDesk({ initialShipping }: ShippingDeskProps) {
                         }
                         value={draft.carrier}
                       >
-                        {initialShipping.carriers.map((carrier) => (
+                        {carrierOptions.map((carrier) => (
                           <option key={`${order.orderId}:${carrier}`} value={carrier}>
-                            {carrier}
+                            {formatCarrierLabel(carrier)}
                           </option>
                         ))}
                       </select>
                     </label>
+
+                    {draft.carrier === "OTHER" ? (
+                      <label className="grid gap-2 text-sm text-stone-700">
+                        Carrier name
+                        <input
+                          className="rounded-2xl border border-black/10 bg-white px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                          onChange={(event) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [order.orderId]: {
+                                ...draft,
+                                carrierLabel: event.target.value
+                              }
+                            }))
+                          }
+                          placeholder="Local rider, Nham24, self-delivery, etc."
+                          value={draft.carrierLabel}
+                        />
+                      </label>
+                    ) : null}
 
                     <label className="grid gap-2 text-sm text-stone-700">
                       Tracking number
