@@ -207,7 +207,12 @@ export function PaymentOperationsConsole({
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
-                      <p className="text-lg font-semibold text-stone-950">{payment.orderNumber}</p>
+                      <Link
+                        className="text-lg font-semibold text-stone-950 underline-offset-4 hover:underline"
+                        href={`/orders/${encodeURIComponent(payment.orderId)}`}
+                      >
+                        {payment.orderNumber}
+                      </Link>
                       <p className="mt-1 text-xs uppercase tracking-[0.22em] text-stone-500">
                         {payment.provider} • {payment.method} • {payment.id}
                       </p>
@@ -235,6 +240,12 @@ export function PaymentOperationsConsole({
                       >
                         {payment.orderState}
                       </span>
+                      <Link
+                        className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-stone-700 transition hover:-translate-y-0.5 hover:text-stone-950"
+                        href={`/orders/${encodeURIComponent(payment.orderId)}`}
+                      >
+                        Open order
+                      </Link>
                     </div>
                   </div>
 
