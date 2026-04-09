@@ -9,6 +9,7 @@ export const BUYER_LOCALES = ["en", "km"] as const;
 export type BuyerLocale = (typeof BUYER_LOCALES)[number];
 
 type MobileDictionary = {
+  accountTab: string;
   addToCart: string;
   addingToCart: string;
   allCategories: string;
@@ -47,6 +48,8 @@ type MobileDictionary = {
   feedError: string;
   feedLoading: string;
   fullName: string;
+  goToAccount: string;
+  homeTab: string;
   heroBody: string;
   heroTitle: string;
   identifierPlaceholder: string;
@@ -63,7 +66,11 @@ type MobileDictionary = {
   orderNumber: string;
   orderStateLabel: string;
   orderSummary: string;
+  ordersBody: string;
+  ordersEmpty: string;
+  ordersTab: string;
   otpCodePlaceholder: string;
+  openTrackingCta: string;
   paymentInstructions: string;
   paymentMethodLabel: string;
   paymentQrPayload: string;
@@ -78,6 +85,7 @@ type MobileDictionary = {
   quantityDecrease: string;
   quantityIncrease: string;
   refreshTracking: string;
+  recentOrdersTitle: string;
   removeItem: string;
   requestOtp: string;
   returnPolicy: string;
@@ -89,12 +97,46 @@ type MobileDictionary = {
   shipmentTimeline: string;
   shippingAddress: string;
   signInRequired: string;
+  signInToShop: string;
   signOut: string;
+  sellerCatalogTab: string;
+  sellerCenter: string;
+  sellerCreateListing: string;
+  sellerDefaultCurrency: string;
+  sellerDescription: string;
+  sellerDisplayName: string;
+  sellerDocuments: string;
+  sellerGoLive: string;
+  sellerInventory: string;
+  sellerKycStatus: string;
+  sellerLegalName: string;
+  sellerListingsLocked: string;
+  sellerListingsUnlocked: string;
+  sellerMissingRequirements: string;
+  sellerNoShipments: string;
+  sellerOverviewBody: string;
+  sellerOverviewTab: string;
+  sellerPayoutBank: string;
+  sellerPayoutName: string;
+  sellerPayoutNumber: string;
+  sellerPriceMinor: string;
+  sellerProductName: string;
+  sellerQuickListingBody: string;
+  sellerSaveProfile: string;
+  sellerShippingTab: string;
+  sellerSlug: string;
+  sellerSupportEmail: string;
+  sellerSupportPhone: string;
+  sellerSwitchWorkspace: string;
+  sellerTrackingNote: string;
+  sellerTrackingUrl: string;
+  sellerWorkspaceLocked: string;
   stateProvince: string;
   stockUnits: string;
   storefrontNote: string;
   subtotal: string;
   shipmentStatusLabel: string;
+  tabBag: string;
   total: string;
   trackOrder: string;
   trackingLink: string;
@@ -107,6 +149,7 @@ type MobileDictionary = {
 
 const dictionaries: Record<BuyerLocale, MobileDictionary> = {
   en: {
+    accountTab: "Account",
     addToCart: "Add to cart",
     addingToCart: "Adding...",
     allCategories: "All categories",
@@ -147,6 +190,8 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     feedError: "Unable to load the feed right now.",
     feedLoading: "Loading products...",
     fullName: "Recipient name",
+    goToAccount: "Open account",
+    homeTab: "Home",
     heroBody:
       "Browse active KhmerCart listings with visible disclosures, live variant stock, and seller context built in.",
     heroTitle: "Find goods that feel local, useful, and ready to ship.",
@@ -164,7 +209,13 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     orderNumber: "Order number",
     orderStateLabel: "Order state",
     orderSummary: "Order summary",
+    ordersBody:
+      "Recent orders from this device stay close so buyers can jump back into payment or tracking without searching email.",
+    ordersEmpty:
+      "Your recent orders will appear here after checkout on this device.",
+    ordersTab: "Orders",
     otpCodePlaceholder: "6-digit OTP",
+    openTrackingCta: "Open tracking",
     paymentInstructions: "Payment instructions",
     paymentMethodLabel: "Payment method",
     paymentQrPayload: "QR payload",
@@ -180,6 +231,7 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     quantityDecrease: "Decrease quantity",
     quantityIncrease: "Increase quantity",
     refreshTracking: "Refresh tracking",
+    recentOrdersTitle: "Recent orders",
     removeItem: "Remove",
     requestOtp: "Request OTP",
     returnPolicy: "Return policy",
@@ -191,13 +243,49 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     shipmentTimeline: "Shipment timeline",
     shippingAddress: "Shipping address",
     signInRequired: "Sign in with a buyer session before using the cart.",
+    signInToShop: "Sign in to unlock bag, checkout, and order tracking on this device.",
     signOut: "Sign out",
+    sellerCatalogTab: "Catalog",
+    sellerCenter: "Seller Center",
+    sellerCreateListing: "Create listing",
+    sellerDefaultCurrency: "Default currency",
+    sellerDescription: "Business description",
+    sellerDisplayName: "Store display name",
+    sellerDocuments: "Documents",
+    sellerGoLive: "Submit for review",
+    sellerInventory: "Inventory",
+    sellerKycStatus: "KYC status",
+    sellerLegalName: "Legal name",
+    sellerListingsLocked: "Listings locked",
+    sellerListingsUnlocked: "Listings unlocked",
+    sellerMissingRequirements: "Missing before review",
+    sellerNoShipments: "No active shipments right now.",
+    sellerOverviewBody:
+      "Run the core seller loop from mobile: keep your profile ready, add products, and update shipping without opening the web studio.",
+    sellerOverviewTab: "Overview",
+    sellerPayoutBank: "Payout bank",
+    sellerPayoutName: "Payout account name",
+    sellerPayoutNumber: "Payout account number",
+    sellerPriceMinor: "Price (minor units)",
+    sellerProductName: "Product name",
+    sellerQuickListingBody:
+      "Start with one fast listing: title, category, price, stock, and support contact.",
+    sellerSaveProfile: "Save profile",
+    sellerShippingTab: "Shipping",
+    sellerSlug: "Store slug",
+    sellerSupportEmail: "Support email",
+    sellerSupportPhone: "Support phone",
+    sellerSwitchWorkspace: "Switch to seller workspace",
+    sellerTrackingNote: "Shipment note",
+    sellerTrackingUrl: "Tracking URL",
+    sellerWorkspaceLocked: "This account does not have seller access yet.",
     stateProvince: "State / province",
     stockUnits: "units",
     storefrontNote:
       "A native buyer shell for KhmerCart that talks to the shared API instead of embedding the web app.",
     subtotal: "Subtotal",
     shipmentStatusLabel: "Shipment status",
+    tabBag: "Bag",
     total: "Total",
     trackOrder: "Track order",
     trackingLink: "Open tracking link",
@@ -208,6 +296,7 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     viewStorefront: "Back to storefront"
   },
   km: {
+    accountTab: "គណនី",
     addToCart: "បន្ថែមទៅកន្ត្រក",
     addingToCart: "កំពុងបន្ថែម...",
     allCategories: "ប្រភេទទាំងអស់",
@@ -248,6 +337,8 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     feedError: "មិនអាចទាញបញ្ជីទំនិញបានទេ។",
     feedLoading: "កំពុងទាញទំនិញ...",
     fullName: "ឈ្មោះអ្នកទទួល",
+    goToAccount: "បើកផ្ទាំងគណនី",
+    homeTab: "ដើម",
     heroBody:
       "ស្វែងរកទំនិញ KhmerCart ដែលកំពុងដាក់លក់ជាមួយព័ត៌មានបង្ហាញ ស្តុកវ៉ារ្យ៉ង់ និងព័ត៌មានអ្នកលក់ច្បាស់លាស់។",
     heroTitle: "ស្វែងរកទំនិញដែលមានប្រយោជន៍ ស្ទាយក្នុងស្រុក និងរួចរាល់សម្រាប់ដឹកជញ្ជូន។",
@@ -265,7 +356,13 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     orderNumber: "លេខបញ្ជាទិញ",
     orderStateLabel: "ស្ថានភាពការបញ្ជាទិញ",
     orderSummary: "សរុបការបញ្ជាទិញ",
+    ordersBody:
+      "ការបញ្ជាទិញថ្មីៗនៅលើឧបករណ៍នេះនឹងនៅជិតដៃ ដើម្បីត្រឡប់ទៅការទូទាត់ ឬ tracking វិញបានលឿន។",
+    ordersEmpty:
+      "ការបញ្ជាទិញថ្មីៗរបស់អ្នកនឹងបង្ហាញនៅទីនេះ បន្ទាប់ពី checkout នៅលើឧបករណ៍នេះ។",
+    ordersTab: "ការបញ្ជាទិញ",
     otpCodePlaceholder: "OTP ៦ ខ្ទង់",
+    openTrackingCta: "បើក tracking",
     paymentInstructions: "ការណែនាំទូទាត់",
     paymentMethodLabel: "វិធីសាស្ត្រទូទាត់",
     paymentQrPayload: "QR payload",
@@ -281,6 +378,7 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     quantityDecrease: "បន្ថយចំនួន",
     quantityIncrease: "បន្ថែមចំនួន",
     refreshTracking: "ធ្វើបច្ចុប្បន្នភាព tracking",
+    recentOrdersTitle: "ការបញ្ជាទិញថ្មីៗ",
     removeItem: "លុបចេញ",
     requestOtp: "ស្នើ OTP",
     returnPolicy: "គោលការណ៍ត្រឡប់ទំនិញ",
@@ -292,13 +390,49 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     shipmentTimeline: "ប្រវត្តិដឹកជញ្ជូន",
     shippingAddress: "អាសយដ្ឋានដឹកជញ្ជូន",
     signInRequired: "សូមចូល buyer session មុនពេលប្រើកន្ត្រក។",
+    signInToShop: "សូមចូលគណនី ដើម្បីប្រើកន្ត្រក checkout និងតាមដានការបញ្ជាទិញនៅលើឧបករណ៍នេះ។",
     signOut: "ចេញ",
+    sellerCatalogTab: "កាតាឡុក",
+    sellerCenter: "ផ្ទាំងអ្នកលក់",
+    sellerCreateListing: "បង្កើតទំនិញ",
+    sellerDefaultCurrency: "រូបិយប័ណ្ណលំនាំដើម",
+    sellerDescription: "ពិពណ៌នាអាជីវកម្ម",
+    sellerDisplayName: "ឈ្មោះហាង",
+    sellerDocuments: "ឯកសារ",
+    sellerGoLive: "ដាក់ស្នើពិនិត្យ",
+    sellerInventory: "ស្តុក",
+    sellerKycStatus: "ស្ថានភាព KYC",
+    sellerLegalName: "ឈ្មោះផ្លូវច្បាប់",
+    sellerListingsLocked: "មិនទាន់អាចដាក់លក់",
+    sellerListingsUnlocked: "អាចដាក់លក់បាន",
+    sellerMissingRequirements: "អ្វីដែលខ្វះមុនពេលពិនិត្យ",
+    sellerNoShipments: "មិនទាន់មានការដឹកជញ្ជូនសកម្មទេ។",
+    sellerOverviewBody:
+      "គ្រប់គ្រងជំហានសំខាន់របស់អ្នកលក់តាមទូរស័ព្ទ៖ profile ទំនិញ និងការដឹកជញ្ជូន ដោយមិនចាំបាច់បើក web studio។",
+    sellerOverviewTab: "ទិដ្ឋភាពទូទៅ",
+    sellerPayoutBank: "ធនាគារទទួលប្រាក់",
+    sellerPayoutName: "ឈ្មោះគណនីទទួលប្រាក់",
+    sellerPayoutNumber: "លេខគណនីទទួលប្រាក់",
+    sellerPriceMinor: "តម្លៃ (ឯកតាតូច)",
+    sellerProductName: "ឈ្មោះទំនិញ",
+    sellerQuickListingBody:
+      "ចាប់ផ្តើមដោយបង្កើត listing មួយឱ្យលឿន៖ ចំណងជើង ប្រភេទ តម្លៃ ស្តុក និងទំនាក់ទំនងគាំទ្រ។",
+    sellerSaveProfile: "រក្សាទុក profile",
+    sellerShippingTab: "ដឹកជញ្ជូន",
+    sellerSlug: "slug ហាង",
+    sellerSupportEmail: "អ៊ីមែលគាំទ្រ",
+    sellerSupportPhone: "លេខទូរស័ព្ទគាំទ្រ",
+    sellerSwitchWorkspace: "ប្តូរទៅផ្ទាំងអ្នកលក់",
+    sellerTrackingNote: "កំណត់ចំណាំដឹកជញ្ជូន",
+    sellerTrackingUrl: "តំណ tracking",
+    sellerWorkspaceLocked: "គណនីនេះមិនទាន់មានសិទ្ធិអ្នកលក់ទេ។",
     stateProvince: "រដ្ឋ / ខេត្ត",
     stockUnits: "ឯកតា",
     storefrontNote:
       "buyer app ជា native សម្រាប់ KhmerCart ដែលភ្ជាប់ទៅ API ដូចគ្នា ហើយរក្សាទម្រង់ discovery បច្ចុប្បន្ន។",
     subtotal: "សរុបរង",
     shipmentStatusLabel: "ស្ថានភាពដឹកជញ្ជូន",
+    tabBag: "កន្ត្រក",
     total: "សរុប",
     trackOrder: "តាមដានការបញ្ជាទិញ",
     trackingLink: "បើកតំណ tracking",

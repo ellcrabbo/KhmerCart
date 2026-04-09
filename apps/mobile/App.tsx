@@ -6,10 +6,17 @@ import type {
   BuyerOrderTrackingData,
   BuyerProductDetail,
   CheckoutAddressInput,
+  CreateSellerProductInput,
   PaymentMethod,
-  RequestOtpResponse
+  RequestOtpResponse,
+  SaveSellerOnboardingInput,
+  SaveSellerShipmentInput,
+  SellerCatalogData,
+  SellerDashboardData,
+  SellerShippingQueueData
 } from "./src/api/client";
 import {
+  createSellerProduct,
   getApiBaseUrl,
   listProducts,
   mutateCartItem,
@@ -18,22 +25,39 @@ import {
   readCheckoutConfig,
   readOrderTracking,
   readProduct,
+  readSellerCatalog,
+  readSellerDashboard,
+  readSellerShippingQueue,
   requestOtp,
   resolveAbsoluteUrl,
+  saveSellerOnboarding,
+  saveSellerShipment,
   submitCheckout,
   verifyOtp
 } from "./src/api/client";
 import { AuthPanel } from "./src/components/AuthPanel";
 import { CartScreen } from "./src/components/CartScreen";
+import { OrdersScreen } from "./src/components/OrdersScreen";
 import { OrderTrackingScreen } from "./src/components/OrderTrackingScreen";
 import { PaymentResultScreen } from "./src/components/PaymentResultScreen";
 import { ProductCard } from "./src/components/ProductCard";
 import { ProductDetailScreen } from "./src/components/ProductDetailScreen";
+import { SellerCatalogScreen } from "./src/components/SellerCatalogScreen";
+import { SellerOverviewScreen } from "./src/components/SellerOverviewScreen";
+import { SellerShippingScreen } from "./src/components/SellerShippingScreen";
 import {
   getBuyerDictionary,
   readDefaultBuyerLocale,
   type BuyerLocale
 } from "./src/lib/i18n";
+import {
+  applyCheckoutToRecentOrders,
+  applyTrackingToRecentOrders,
+  readRecentOrders,
+  rememberCheckoutOrder,
+  rememberTrackedOrder,
+  type BuyerRecentOrder
+} from "./src/lib/orders";
 import {
   clearStoredSessionToken,
   readStoredSessionToken,
@@ -58,6 +82,8 @@ import {
 } from "react-native-safe-area-context";
 
 type FeedState = BuyerFeedResult;
+type ShellTab = "home" | "cart" | "orders" | "account";
+type SellerShellTab = "overview" | "catalog" | "shipping";
 
 const emptyFeedState: FeedState = {
   categories: [],
@@ -88,6 +114,43 @@ const initialShippingAddress: CheckoutAddressInput = {
   stateProvince: ""
 };
 
+const initialSellerProfileDraft: SaveSellerOnboardingInput = {
+  businessDescription: "",
+  defaultCurrency: "KHR",
+  displayName: "",
+  legalName: "",
+  payoutAccountName: "",
+  payoutAccountNumber: "",
+  payoutBankName: "",
+  payoutRoutingNumber: "",
+  slug: "",
+  supportEmail: "",
+  supportPhone: ""
+};
+
+const initialSellerProductDraft: CreateSellerProductInput = {
+  category: "",
+  description: "",
+  name: "",
+  returnPolicy: "Returns accepted within seven days if unused and in original condition.",
+  sellerAddress: "",
+  sellerContact: "",
+  slug: "",
+  status: "DRAFT",
+  variants: [
+    {
+      currency: "KHR",
+      inventoryQuantity: 0,
+      isActive: true,
+      isDefault: true,
+      name: "Default",
+      priceMinor: 0,
+      reorderPoint: 0,
+      sku: ""
+    }
+  ]
+};
+
 function resolveSessionLabel(session: AuthSession) {
   return session.user.email ?? session.user.phone ?? session.user.id;
 }
@@ -103,9 +166,12 @@ function createIdempotencyKey() {
 
 export default function App() {
   const [locale, setLocale] = useState<BuyerLocale>(readDefaultBuyerLocale());
+  const [activeTab, setActiveTab] = useState<ShellTab>("home");
   const [session, setSession] = useState<AuthSession | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+  const [recentOrders, setRecentOrders] = useState<BuyerRecentOrder[]>([]);
+  const [isRestoringRecentOrders, setIsRestoringRecentOrders] = useState(true);
 
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
@@ -113,6 +179,22 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+  const [isSellerMode, setIsSellerMode] = useState(false);
+  const [sellerTab, setSellerTab] = useState<SellerShellTab>("overview");
+  const [sellerDashboard, setSellerDashboard] = useState<SellerDashboardData | null>(null);
+  const [sellerCatalog, setSellerCatalog] = useState<SellerCatalogData | null>(null);
+  const [sellerShipping, setSellerShipping] = useState<SellerShippingQueueData | null>(null);
+  const [isSellerLoading, setIsSellerLoading] = useState(false);
+  const [sellerError, setSellerError] = useState<string | null>(null);
+  const [sellerMessage, setSellerMessage] = useState<string | null>(null);
+  const [isSellerSaving, setIsSellerSaving] = useState(false);
+  const [sellerProfileDraft, setSellerProfileDraft] =
+    useState<SaveSellerOnboardingInput>(initialSellerProfileDraft);
+  const [sellerProductDraft, setSellerProductDraft] =
+    useState<CreateSellerProductInput>(initialSellerProductDraft);
+  const [sellerShipmentDrafts, setSellerShipmentDrafts] = useState<
+    Record<string, SaveSellerShipmentInput>
+  >({});
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [feedState, setFeedState] = useState<FeedState>(emptyFeedState);
@@ -125,7 +207,6 @@ export default function App() {
   const [isProductLoading, setIsProductLoading] = useState(false);
   const [productError, setProductError] = useState<string | null>(null);
 
-  const [showCart, setShowCart] = useState(false);
   const [cart, setCart] = useState<BuyerCart>(emptyCartState);
   const [isCartLoading, setIsCartLoading] = useState(false);
   const [isCartMutating, setIsCartMutating] = useState(false);
@@ -186,6 +267,92 @@ export default function App() {
         if (isActive) {
           setIsRestoringSession(false);
         }
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSellerMode || !sessionToken || !session?.user.roles.includes("SELLER")) {
+      return;
+    }
+
+    let isActive = true;
+
+    setIsSellerLoading(true);
+    setSellerError(null);
+
+    void (async () => {
+      try {
+        const [dashboard, catalog, shipping] = await Promise.all([
+          readSellerDashboard(sessionToken),
+          readSellerCatalog(sessionToken),
+          readSellerShippingQueue(sessionToken)
+        ]);
+
+        if (!isActive) {
+          return;
+        }
+
+        setSellerDashboard(dashboard);
+        setSellerCatalog(catalog);
+        setSellerShipping(shipping);
+        setSellerProfileDraft({
+          businessDescription: dashboard.seller.businessDescription,
+          defaultCurrency: dashboard.seller.defaultCurrency,
+          displayName: dashboard.seller.displayName,
+          legalName: dashboard.seller.legalName,
+          payoutAccountName: dashboard.seller.payoutAccountName,
+          payoutAccountNumber: dashboard.seller.payoutAccountNumber,
+          payoutBankName: dashboard.seller.payoutBankName,
+          payoutRoutingNumber: dashboard.seller.payoutRoutingNumber,
+          slug: dashboard.seller.slug,
+          supportEmail: dashboard.seller.supportEmail,
+          supportPhone: dashboard.seller.supportPhone
+        });
+        setSellerShipmentDrafts(
+          Object.fromEntries(
+            shipping.orders.map((order) => [
+              order.orderId,
+              {
+                carrier: order.shipment?.carrier ?? shipping.carriers[0] ?? "OTHER",
+                message: "",
+                trackingNumber: order.shipment?.trackingNumber ?? "",
+                trackingUrl: order.shipment?.trackingUrl ?? ""
+              }
+            ])
+          )
+        );
+      } catch (error) {
+        if (isActive) {
+          setSellerError(
+            error instanceof Error ? error.message : "Unable to load seller workspace."
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsSellerLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isSellerMode, session?.user.roles, sessionToken]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    void (async () => {
+      const storedOrders = await readRecentOrders();
+
+      if (isActive) {
+        setRecentOrders(storedOrders);
+        setIsRestoringRecentOrders(false);
       }
     })();
 
@@ -376,6 +543,59 @@ export default function App() {
     }
   }
 
+  async function refreshSellerWorkspace(token = sessionToken) {
+    if (!token || !session?.user.roles.includes("SELLER")) {
+      return;
+    }
+
+    setIsSellerLoading(true);
+    setSellerError(null);
+
+    try {
+      const [dashboard, catalog, shipping] = await Promise.all([
+        readSellerDashboard(token),
+        readSellerCatalog(token),
+        readSellerShippingQueue(token)
+      ]);
+
+      setSellerDashboard(dashboard);
+      setSellerCatalog(catalog);
+      setSellerShipping(shipping);
+      setSellerProfileDraft({
+        businessDescription: dashboard.seller.businessDescription,
+        defaultCurrency: dashboard.seller.defaultCurrency,
+        displayName: dashboard.seller.displayName,
+        legalName: dashboard.seller.legalName,
+        payoutAccountName: dashboard.seller.payoutAccountName,
+        payoutAccountNumber: dashboard.seller.payoutAccountNumber,
+        payoutBankName: dashboard.seller.payoutBankName,
+        payoutRoutingNumber: dashboard.seller.payoutRoutingNumber,
+        slug: dashboard.seller.slug,
+        supportEmail: dashboard.seller.supportEmail,
+        supportPhone: dashboard.seller.supportPhone
+      });
+      setSellerShipmentDrafts(
+        Object.fromEntries(
+          shipping.orders.map((order) => [
+            order.orderId,
+            {
+              carrier: order.shipment?.carrier ?? shipping.carriers[0] ?? "OTHER",
+              message: "",
+              trackingNumber: order.shipment?.trackingNumber ?? "",
+              trackingUrl: order.shipment?.trackingUrl ?? ""
+            }
+          ])
+        )
+      );
+    } catch (error) {
+      setSellerError(
+        error instanceof Error ? error.message : "Unable to refresh seller workspace."
+      );
+    } finally {
+      setIsSellerLoading(false);
+    }
+  }
+
   async function loadTracking(orderId: string, token = sessionToken) {
     if (!token) {
       return;
@@ -388,6 +608,13 @@ export default function App() {
     try {
       const payload = await readOrderTracking(token, orderId);
 
+      setRecentOrders((current) => {
+        const nextOrders = applyTrackingToRecentOrders(current, payload);
+
+        void rememberTrackedOrder(current, payload);
+
+        return nextOrders;
+      });
       setTrackingData(payload);
     } catch (error) {
       setTrackingError(
@@ -470,12 +697,151 @@ export default function App() {
     setAuthError(null);
     setAuthMessage("Buyer session cleared on this device.");
     setCart(emptyCartState);
-    setShowCart(false);
+    setActiveTab("home");
     setCheckoutResult(null);
     setCheckoutError(null);
     setTrackingOrderId(null);
     setTrackingData(null);
     setTrackingError(null);
+    setIsSellerMode(false);
+    setSellerTab("overview");
+    setSellerDashboard(null);
+    setSellerCatalog(null);
+    setSellerShipping(null);
+    setSellerError(null);
+    setSellerMessage(null);
+  }
+
+  function handleChangeSellerProfileField(
+    field: keyof SaveSellerOnboardingInput,
+    value: string
+  ) {
+    setSellerProfileDraft((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  function handleChangeSellerProductDraft(
+    field: keyof CreateSellerProductInput | "inventoryQuantity" | "priceMinor",
+    value: string
+  ) {
+    if (field === "inventoryQuantity" || field === "priceMinor") {
+      setSellerProductDraft((current) => ({
+        ...current,
+        variants: [
+          {
+            ...(current.variants?.[0] ?? {}),
+            inventoryQuantity:
+              field === "inventoryQuantity"
+                ? (Number.parseInt(value || "0", 10) || 0)
+                : current.variants?.[0]?.inventoryQuantity ?? 0,
+            priceMinor:
+              field === "priceMinor"
+                ? (Number.parseInt(value || "0", 10) || 0)
+                : current.variants?.[0]?.priceMinor ?? 0
+          }
+        ]
+      }));
+      return;
+    }
+
+    setSellerProductDraft((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  function handleChangeSellerShipmentDraft(
+    orderId: string,
+    field: keyof SaveSellerShipmentInput,
+    value: string
+  ) {
+    setSellerShipmentDrafts((current) => ({
+      ...current,
+      [orderId]: {
+        ...current[orderId],
+        [field]: value
+      }
+    }));
+  }
+
+  async function handleSaveSellerProfile(submitForReview = false) {
+    if (!sessionToken) {
+      return;
+    }
+
+    setIsSellerSaving(true);
+    setSellerError(null);
+    setSellerMessage(null);
+
+    try {
+      await saveSellerOnboarding(sessionToken, {
+        ...sellerProfileDraft,
+        submitForReview
+      });
+      await refreshSellerWorkspace(sessionToken);
+      setSellerMessage(
+        submitForReview ? "Seller profile submitted for review." : "Seller profile saved."
+      );
+    } catch (error) {
+      setSellerError(
+        error instanceof Error ? error.message : "Unable to save seller profile."
+      );
+    } finally {
+      setIsSellerSaving(false);
+    }
+  }
+
+  async function handleCreateSellerListing() {
+    if (!sessionToken) {
+      return;
+    }
+
+    setIsSellerSaving(true);
+    setSellerError(null);
+    setSellerMessage(null);
+
+    try {
+      await createSellerProduct(sessionToken, sellerProductDraft);
+      await refreshSellerWorkspace(sessionToken);
+      setSellerProductDraft(initialSellerProductDraft);
+      setSellerMessage("Seller listing created.");
+    } catch (error) {
+      setSellerError(
+        error instanceof Error ? error.message : "Unable to create seller listing."
+      );
+    } finally {
+      setIsSellerSaving(false);
+    }
+  }
+
+  async function handleSaveSellerShipment(
+    orderId: string,
+    status?: "HANDED_TO_CARRIER" | "IN_TRANSIT" | "DELIVERED"
+  ) {
+    if (!sessionToken) {
+      return;
+    }
+
+    setIsSellerSaving(true);
+    setSellerError(null);
+    setSellerMessage(null);
+
+    try {
+      await saveSellerShipment(sessionToken, orderId, {
+        ...sellerShipmentDrafts[orderId],
+        status
+      });
+      await refreshSellerWorkspace(sessionToken);
+      setSellerMessage("Shipment update saved.");
+    } catch (error) {
+      setSellerError(
+        error instanceof Error ? error.message : "Unable to save shipment update."
+      );
+    } finally {
+      setIsSellerSaving(false);
+    }
   }
 
   async function handleLoadMore() {
@@ -510,6 +876,7 @@ export default function App() {
     }
 
     Alert.alert("KhmerCart", dictionary.signInRequired);
+    setActiveTab("account");
     return false;
   }
 
@@ -519,11 +886,19 @@ export default function App() {
     }
 
     setCheckoutError(null);
-    setShowCart(true);
+    setActiveTab("cart");
 
     if (!cart.id && sessionToken) {
       await refreshCart(sessionToken);
     }
+  }
+
+  async function handleOpenOrdersTab() {
+    if (!requireBuyerSession()) {
+      return;
+    }
+
+    setActiveTab("orders");
   }
 
   async function handleAddToCart(variantId: string) {
@@ -653,7 +1028,13 @@ export default function App() {
       );
 
       setCheckoutResult(payload);
-      setShowCart(false);
+      setRecentOrders((current) => {
+        const nextOrders = applyCheckoutToRecentOrders(current, payload);
+
+        void rememberCheckoutOrder(current, payload);
+
+        return nextOrders;
+      });
       setTrackingOrderId(null);
       setTrackingData(null);
       setTrackingError(null);
@@ -694,7 +1075,17 @@ export default function App() {
       return;
     }
 
+    setActiveTab("orders");
     await loadTracking(checkoutResult.orderId);
+  }
+
+  async function handleOpenRecentOrder(orderId: string) {
+    if (!requireBuyerSession()) {
+      return;
+    }
+
+    setActiveTab("orders");
+    await loadTracking(orderId);
   }
 
   async function handleRefreshTracking() {
@@ -734,8 +1125,22 @@ export default function App() {
     setTrackingOrderId(null);
     setTrackingData(null);
     setTrackingError(null);
-    setShowCart(false);
+    setActiveTab("home");
     setSelectedProductSlug(null);
+  }
+
+  function handleSelectTab(nextTab: ShellTab) {
+    if (nextTab === "cart") {
+      void handleOpenCart();
+      return;
+    }
+
+    if (nextTab === "orders") {
+      void handleOpenOrdersTab();
+      return;
+    }
+
+    setActiveTab(nextTab);
   }
 
   function renderLocaleChip(nextLocale: BuyerLocale) {
@@ -762,6 +1167,371 @@ export default function App() {
     );
   }
 
+  function renderHomeTab() {
+    return (
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.hero}>
+          <View style={styles.heroPanel}>
+            <Text style={styles.heroEyebrow}>KhmerCart Mobile</Text>
+            <Text style={styles.heroTitle}>{dictionary.heroTitle}</Text>
+            <Text style={styles.heroBody}>{dictionary.heroBody}</Text>
+
+            <View style={styles.quickStatsRow}>
+              <View style={styles.quickStatCard}>
+                <Text style={styles.quickStatLabel}>{dictionary.tabBag}</Text>
+                <Text style={styles.quickStatValue}>{cart.itemCount}</Text>
+              </View>
+
+              <View style={styles.quickStatCard}>
+                <Text style={styles.quickStatLabel}>{dictionary.ordersTab}</Text>
+                <Text style={styles.quickStatValue}>
+                  {isRestoringRecentOrders ? "..." : recentOrders.length}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.storefrontNoteCard}>
+            <Text style={styles.storefrontNoteText}>{dictionary.storefrontNote}</Text>
+          </View>
+
+          {session ? (
+            <View style={styles.sessionSummaryCard}>
+              <View style={styles.sessionSummaryCopy}>
+                <Text style={styles.sectionEyebrow}>{dictionary.authTitle}</Text>
+                <Text style={styles.sessionSummaryValue}>
+                  {resolveSessionLabel(session)}
+                </Text>
+              </View>
+
+              <View style={styles.sessionSummaryActions}>
+                <Pressable onPress={handleOpenOrdersTab} style={styles.summaryGhostButton}>
+                  <Text style={styles.summaryGhostButtonText}>{dictionary.ordersTab}</Text>
+                </Pressable>
+
+                <Pressable onPress={handleOpenCart} style={styles.summaryPrimaryButton}>
+                  <Text style={styles.summaryPrimaryButtonText}>
+                    {dictionary.openCart} {cart.itemCount > 0 ? `(${cart.itemCount})` : ""}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.restoreCard}>
+              <View style={styles.restoreCopy}>
+                <Text style={styles.restoreTitle}>{dictionary.signInRequired}</Text>
+                <Text style={styles.restoreText}>{dictionary.signInToShop}</Text>
+              </View>
+              <Pressable
+                onPress={() => setActiveTab("account")}
+                style={styles.summaryPrimaryButton}
+              >
+                <Text style={styles.summaryPrimaryButtonText}>{dictionary.goToAccount}</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionEyebrow}>{dictionary.featuredNow}</Text>
+            <Text style={styles.sectionTitle}>{dictionary.browseTitle}</Text>
+          </View>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.categoryRow}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+        >
+          <Pressable
+            onPress={() => setSelectedCategory(null)}
+            style={[
+              styles.categoryChip,
+              selectedCategory === null ? styles.categoryChipSelected : null
+            ]}
+          >
+            <Text
+              style={[
+                styles.categoryChipText,
+                selectedCategory === null ? styles.categoryChipTextSelected : null
+              ]}
+            >
+              {dictionary.allCategories}
+            </Text>
+          </Pressable>
+
+          {feedState.categories.map((category) => {
+            const isSelected = selectedCategory === category;
+
+            return (
+              <Pressable
+                key={category}
+                onPress={() => setSelectedCategory(category)}
+                style={[
+                  styles.categoryChip,
+                  isSelected ? styles.categoryChipSelected : null
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    isSelected ? styles.categoryChipTextSelected : null
+                  ]}
+                >
+                  {category}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {feedError ? <Text style={styles.errorBanner}>{feedError}</Text> : null}
+
+        {isFeedLoading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator color={palette.accent} size="large" />
+            <Text style={styles.loadingText}>{dictionary.feedLoading}</Text>
+          </View>
+        ) : null}
+
+        {!isFeedLoading && feedState.items.length === 0 ? (
+          <Text style={styles.emptyState}>{dictionary.feedEmpty}</Text>
+        ) : null}
+
+        <View style={styles.productList}>
+          {feedState.items.map((item) => (
+            <ProductCard
+              key={item.id}
+              item={item}
+              locale={locale}
+              onPress={() => setSelectedProductSlug(item.slug)}
+            />
+          ))}
+        </View>
+
+        {feedState.nextCursor ? (
+          <Pressable
+            onPress={handleLoadMore}
+            style={({ pressed }) => [
+              styles.loadMoreButton,
+              pressed ? styles.buttonPressed : null
+            ]}
+          >
+            {isLoadingMore ? (
+              <ActivityIndicator color={palette.card} />
+            ) : (
+              <Text style={styles.loadMoreText}>{dictionary.loadMore}</Text>
+            )}
+          </Pressable>
+        ) : null}
+      </ScrollView>
+    );
+  }
+
+  function renderAccountTab() {
+    return (
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.hero}>
+          <View style={styles.heroHeader}>
+            <View style={styles.heroCopy}>
+              <Text style={styles.heroEyebrow}>{dictionary.accountTab}</Text>
+              <Text style={styles.accountTitle}>{dictionary.authTitle}</Text>
+              <Text style={styles.heroBody}>{dictionary.authBody}</Text>
+            </View>
+
+            <View style={styles.localePanel}>
+              <Text style={styles.localeLabel}>{dictionary.localeLabel}</Text>
+              <View style={styles.localeRow}>{(["en", "km"] as const).map(renderLocaleChip)}</View>
+            </View>
+          </View>
+
+          {isRestoringSession ? (
+            <View style={styles.restoreCard}>
+              <ActivityIndicator color={palette.accent} />
+              <Text style={styles.restoreText}>{dictionary.loading}</Text>
+            </View>
+          ) : (
+            <View style={styles.accountStack}>
+              <AuthPanel
+                apiBaseUrl={apiBaseUrl}
+                authError={authError}
+                authMessage={authMessage}
+                code={code}
+                identifier={identifier}
+                isSubmitting={isSubmittingAuth}
+                locale={locale}
+                otpRequest={otpRequestState}
+                session={session}
+                onChangeCode={setCode}
+                onChangeIdentifier={setIdentifier}
+                onRequestOtp={handleRequestOtp}
+                onSignOut={handleSignOut}
+                onVerifyOtp={handleVerifyOtp}
+              />
+
+              {session?.user.roles.includes("SELLER") ? (
+                <View style={styles.workspaceCard}>
+                  <Text style={styles.sectionEyebrow}>{dictionary.sellerCenter}</Text>
+                  <Text style={styles.workspaceTitle}>{dictionary.sellerSwitchWorkspace}</Text>
+                  <Text style={styles.workspaceBody}>{dictionary.sellerOverviewBody}</Text>
+                  <Pressable
+                    onPress={() => {
+                      setIsSellerMode(true);
+                      setSellerTab("overview");
+                    }}
+                    style={styles.summaryPrimaryButton}
+                  >
+                    <Text style={styles.summaryPrimaryButtonText}>
+                      {dictionary.sellerCenter}
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : session ? (
+                <View style={styles.workspaceCard}>
+                  <Text style={styles.sectionEyebrow}>{dictionary.sellerCenter}</Text>
+                  <Text style={styles.workspaceBody}>{dictionary.sellerWorkspaceLocked}</Text>
+                </View>
+              ) : null}
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    );
+  }
+
+  function renderSellerTabButton(tab: SellerShellTab, label: string) {
+    const isSelected = sellerTab === tab;
+
+    return (
+      <Pressable
+        key={tab}
+        onPress={() => setSellerTab(tab)}
+        style={[styles.tabButton, isSelected ? styles.tabButtonSelected : null]}
+      >
+        <Text style={[styles.tabButtonText, isSelected ? styles.tabButtonTextSelected : null]}>
+          {label}
+        </Text>
+      </Pressable>
+    );
+  }
+
+  function renderSellerShellContent() {
+    if (sellerTab === "catalog") {
+      return (
+        <SellerCatalogScreen
+          catalog={sellerCatalog}
+          draft={sellerProductDraft}
+          errorMessage={sellerError}
+          isCreating={isSellerSaving}
+          isLoading={isSellerLoading}
+          locale={locale}
+          message={sellerMessage}
+          onChangeDraft={handleChangeSellerProductDraft}
+          onCreate={handleCreateSellerListing}
+        />
+      );
+    }
+
+    if (sellerTab === "shipping") {
+      return (
+        <SellerShippingScreen
+          drafts={sellerShipmentDrafts}
+          errorMessage={sellerError}
+          isLoading={isSellerLoading}
+          isSaving={isSellerSaving}
+          locale={locale}
+          queue={sellerShipping}
+          statusMessage={sellerMessage}
+          onChangeDraft={handleChangeSellerShipmentDraft}
+          onSaveOrder={handleSaveSellerShipment}
+        />
+      );
+    }
+
+    return (
+      <SellerOverviewScreen
+        data={sellerDashboard}
+        errorMessage={sellerError}
+        form={sellerProfileDraft}
+        isLoading={isSellerLoading}
+        isSaving={isSellerSaving}
+        locale={locale}
+        message={sellerMessage}
+        onChangeField={handleChangeSellerProfileField}
+        onSave={() => void handleSaveSellerProfile(false)}
+        onSubmitForReview={() => void handleSaveSellerProfile(true)}
+      />
+    );
+  }
+
+  function renderTabButton(tab: ShellTab, label: string) {
+    const isSelected = activeTab === tab;
+
+    return (
+      <Pressable
+        key={tab}
+        onPress={() => handleSelectTab(tab)}
+        style={[styles.tabButton, isSelected ? styles.tabButtonSelected : null]}
+      >
+        <Text style={[styles.tabButtonText, isSelected ? styles.tabButtonTextSelected : null]}>
+          {label}
+        </Text>
+      </Pressable>
+    );
+  }
+
+  function renderShellContent() {
+    if (activeTab === "cart") {
+      return (
+        <CartScreen
+          cart={cart}
+          errorMessage={cartError ?? checkoutError ?? checkoutConfigError}
+          isLoading={isCartLoading}
+          isMutatingCart={isCartMutating}
+          isSubmittingCheckout={isSubmittingCheckout}
+          locale={locale}
+          notes={checkoutNotes}
+          paymentMethods={paymentMethods}
+          selectedPaymentMethod={selectedPaymentMethod}
+          shippingAddress={shippingAddress}
+          onBack={() => setActiveTab("home")}
+          onChangeAddressField={(field, value) =>
+            setShippingAddress((current) => ({
+              ...current,
+              [field]: value
+            }))
+          }
+          onChangeNotes={setCheckoutNotes}
+          onDecreaseItem={handleDecreaseItem}
+          onIncreaseItem={handleIncreaseItem}
+          onRemoveItem={handleRemoveItem}
+          onSelectPaymentMethod={setSelectedPaymentMethod}
+          onSubmitCheckout={handleSubmitCheckout}
+        />
+      );
+    }
+
+    if (activeTab === "orders") {
+      return (
+        <OrdersScreen
+          isLoading={isRestoringRecentOrders}
+          isSignedIn={Boolean(sessionToken)}
+          locale={locale}
+          orders={recentOrders}
+          onOpenAccount={() => setActiveTab("account")}
+          onOpenOrder={handleOpenRecentOrder}
+        />
+      );
+    }
+
+    if (activeTab === "account") {
+      return renderAccountTab();
+    }
+
+    return renderHomeTab();
+  }
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea}>
@@ -785,32 +1555,6 @@ export default function App() {
             onOpenPayment={handleOpenPayment}
             onTrackOrder={handleTrackOrder}
           />
-        ) : showCart ? (
-          <CartScreen
-            cart={cart}
-            errorMessage={cartError ?? checkoutError ?? checkoutConfigError}
-            isLoading={isCartLoading}
-            isMutatingCart={isCartMutating}
-            isSubmittingCheckout={isSubmittingCheckout}
-            locale={locale}
-            notes={checkoutNotes}
-            paymentMethods={paymentMethods}
-            selectedPaymentMethod={selectedPaymentMethod}
-            shippingAddress={shippingAddress}
-            onBack={() => setShowCart(false)}
-            onChangeAddressField={(field, value) =>
-              setShippingAddress((current) => ({
-                ...current,
-                [field]: value
-              }))
-            }
-            onChangeNotes={setCheckoutNotes}
-            onDecreaseItem={handleDecreaseItem}
-            onIncreaseItem={handleIncreaseItem}
-            onRemoveItem={handleRemoveItem}
-            onSelectPaymentMethod={setSelectedPaymentMethod}
-            onSubmitCheckout={handleSubmitCheckout}
-          />
         ) : selectedProductSlug ? (
           <ProductDetailScreen
             canAddToCart={Boolean(sessionToken)}
@@ -824,163 +1568,31 @@ export default function App() {
             onOpenCart={handleOpenCart}
             product={selectedProduct}
           />
+        ) : isSellerMode ? (
+          <View style={styles.shell}>
+            <View style={styles.shellBody}>{renderSellerShellContent()}</View>
+            <View style={styles.tabBar}>
+              {renderSellerTabButton("overview", dictionary.sellerOverviewTab)}
+              {renderSellerTabButton("catalog", dictionary.sellerCatalogTab)}
+              {renderSellerTabButton("shipping", dictionary.sellerShippingTab)}
+              <Pressable
+                onPress={() => setIsSellerMode(false)}
+                style={styles.tabButton}
+              >
+                <Text style={styles.tabButtonText}>{dictionary.homeTab}</Text>
+              </Pressable>
+            </View>
+          </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.content}>
-            <View style={styles.hero}>
-              <View style={styles.heroHeader}>
-                <View style={styles.heroCopy}>
-                  <Text style={styles.heroEyebrow}>KhmerCart Mobile</Text>
-                  <Text style={styles.heroTitle}>{dictionary.heroTitle}</Text>
-                  <Text style={styles.heroBody}>{dictionary.heroBody}</Text>
-                </View>
-
-                <View style={styles.localePanel}>
-                  <Text style={styles.localeLabel}>{dictionary.localeLabel}</Text>
-                  <View style={styles.localeRow}>
-                    {(["en", "km"] as const).map(renderLocaleChip)}
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.storefrontNoteCard}>
-                <Text style={styles.storefrontNoteText}>{dictionary.storefrontNote}</Text>
-              </View>
-
-              {isRestoringSession ? (
-                <View style={styles.restoreCard}>
-                  <ActivityIndicator color={palette.accent} />
-                  <Text style={styles.restoreText}>{dictionary.loading}</Text>
-                </View>
-              ) : (
-                <AuthPanel
-                  apiBaseUrl={apiBaseUrl}
-                  authError={authError}
-                  authMessage={authMessage}
-                  code={code}
-                  identifier={identifier}
-                  isSubmitting={isSubmittingAuth}
-                  locale={locale}
-                  otpRequest={otpRequestState}
-                  session={session}
-                  onChangeCode={setCode}
-                  onChangeIdentifier={setIdentifier}
-                  onRequestOtp={handleRequestOtp}
-                  onSignOut={handleSignOut}
-                  onVerifyOtp={handleVerifyOtp}
-                />
-              )}
+          <View style={styles.shell}>
+            <View style={styles.shellBody}>{renderShellContent()}</View>
+            <View style={styles.tabBar}>
+              {renderTabButton("home", dictionary.homeTab)}
+              {renderTabButton("cart", dictionary.tabBag)}
+              {renderTabButton("orders", dictionary.ordersTab)}
+              {renderTabButton("account", dictionary.accountTab)}
             </View>
-
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>{dictionary.featuredNow}</Text>
-                <Text style={styles.sectionTitle}>{dictionary.browseTitle}</Text>
-              </View>
-
-              <View style={styles.sectionActions}>
-                {session ? (
-                  <View style={styles.sessionPill}>
-                    <Text style={styles.sessionPillText}>
-                      {resolveSessionLabel(session)}
-                    </Text>
-                  </View>
-                ) : null}
-
-                <Pressable onPress={handleOpenCart} style={styles.cartPill}>
-                  <Text style={styles.cartPillText}>
-                    {dictionary.openCart} {cart.itemCount > 0 ? `(${cart.itemCount})` : ""}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <ScrollView
-              contentContainerStyle={styles.categoryRow}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-            >
-              <Pressable
-                onPress={() => setSelectedCategory(null)}
-                style={[
-                  styles.categoryChip,
-                  selectedCategory === null ? styles.categoryChipSelected : null
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.categoryChipText,
-                    selectedCategory === null ? styles.categoryChipTextSelected : null
-                  ]}
-                >
-                  {dictionary.allCategories}
-                </Text>
-              </Pressable>
-
-              {feedState.categories.map((category) => {
-                const isSelected = selectedCategory === category;
-
-                return (
-                  <Pressable
-                    key={category}
-                    onPress={() => setSelectedCategory(category)}
-                    style={[
-                      styles.categoryChip,
-                      isSelected ? styles.categoryChipSelected : null
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.categoryChipText,
-                        isSelected ? styles.categoryChipTextSelected : null
-                      ]}
-                    >
-                      {category}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            {feedError ? <Text style={styles.errorBanner}>{feedError}</Text> : null}
-
-            {isFeedLoading ? (
-              <View style={styles.loadingState}>
-                <ActivityIndicator color={palette.accent} size="large" />
-                <Text style={styles.loadingText}>{dictionary.feedLoading}</Text>
-              </View>
-            ) : null}
-
-            {!isFeedLoading && feedState.items.length === 0 ? (
-              <Text style={styles.emptyState}>{dictionary.feedEmpty}</Text>
-            ) : null}
-
-            <View style={styles.productList}>
-              {feedState.items.map((item) => (
-                <ProductCard
-                  key={item.id}
-                  item={item}
-                  locale={locale}
-                  onPress={() => setSelectedProductSlug(item.slug)}
-                />
-              ))}
-            </View>
-
-            {feedState.nextCursor ? (
-              <Pressable
-                onPress={handleLoadMore}
-                style={({ pressed }) => [
-                  styles.loadMoreButton,
-                  pressed ? styles.buttonPressed : null
-                ]}
-              >
-                {isLoadingMore ? (
-                  <ActivityIndicator color={palette.card} />
-                ) : (
-                  <Text style={styles.loadMoreText}>{dictionary.loadMore}</Text>
-                )}
-              </Pressable>
-            ) : null}
-          </ScrollView>
+          </View>
         )}
       </SafeAreaView>
     </SafeAreaProvider>
@@ -988,6 +1600,15 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  accountTitle: {
+    color: palette.ink,
+    fontSize: 32,
+    fontWeight: "700",
+    lineHeight: 38
+  },
+  accountStack: {
+    gap: 16
+  },
   buttonPressed: {
     opacity: 0.9
   },
@@ -1040,6 +1661,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     paddingHorizontal: 20
+  },
+  heroPanel: {
+    backgroundColor: palette.card,
+    borderColor: palette.border,
+    borderRadius: 32,
+    borderWidth: 1,
+    gap: 18,
+    padding: 22
   },
   hero: {
     backgroundColor: palette.background,
@@ -1140,6 +1769,33 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingHorizontal: 20
   },
+  quickStatCard: {
+    backgroundColor: palette.sunMuted,
+    borderRadius: 22,
+    flex: 1,
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 14
+  },
+  quickStatLabel: {
+    color: palette.sun,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  quickStatValue: {
+    color: palette.ink,
+    fontSize: 24,
+    fontWeight: "700"
+  },
+  quickStatsRow: {
+    flexDirection: "row",
+    gap: 12
+  },
+  restoreCopy: {
+    flex: 1,
+    gap: 4
+  },
   restoreCard: {
     alignItems: "center",
     backgroundColor: palette.card,
@@ -1155,8 +1811,19 @@ const styles = StyleSheet.create({
     color: palette.muted,
     fontSize: 14
   },
+  restoreTitle: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: "700"
+  },
   safeArea: {
     backgroundColor: palette.background,
+    flex: 1
+  },
+  shell: {
+    flex: 1
+  },
+  shellBody: {
     flex: 1
   },
   sectionActions: {
@@ -1182,6 +1849,26 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 4
   },
+  sessionSummaryActions: {
+    flexDirection: "row",
+    gap: 10
+  },
+  sessionSummaryCard: {
+    backgroundColor: palette.card,
+    borderColor: palette.border,
+    borderRadius: 28,
+    borderWidth: 1,
+    gap: 14,
+    padding: 18
+  },
+  sessionSummaryCopy: {
+    gap: 6
+  },
+  sessionSummaryValue: {
+    color: palette.ink,
+    fontSize: 18,
+    fontWeight: "700"
+  },
   sessionPill: {
     backgroundColor: palette.accentMuted,
     borderRadius: 999,
@@ -1203,5 +1890,78 @@ const styles = StyleSheet.create({
     color: palette.card,
     fontSize: 15,
     lineHeight: 23
+  },
+  summaryGhostButton: {
+    alignItems: "center",
+    backgroundColor: palette.accentMuted,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 44,
+    paddingHorizontal: 16
+  },
+  summaryGhostButtonText: {
+    color: palette.accent,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  summaryPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: palette.accent,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 44,
+    paddingHorizontal: 16
+  },
+  summaryPrimaryButtonText: {
+    color: palette.card,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  tabBar: {
+    backgroundColor: palette.card,
+    borderTopColor: palette.border,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    paddingBottom: 14,
+    paddingHorizontal: 16,
+    paddingTop: 12
+  },
+  tabButton: {
+    alignItems: "center",
+    borderRadius: 999,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 8
+  },
+  tabButtonSelected: {
+    backgroundColor: palette.accent
+  },
+  tabButtonText: {
+    color: palette.muted,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  tabButtonTextSelected: {
+    color: palette.card
+  },
+  workspaceBody: {
+    color: palette.muted,
+    fontSize: 14,
+    lineHeight: 21
+  },
+  workspaceCard: {
+    backgroundColor: palette.card,
+    borderColor: palette.border,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: 10,
+    padding: 18
+  },
+  workspaceTitle: {
+    color: palette.ink,
+    fontSize: 18,
+    fontWeight: "700"
   }
 });

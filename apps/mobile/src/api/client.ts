@@ -252,6 +252,128 @@ export type BuyerOrderTrackingData = {
   totalMinor: number
 }
 
+export type SellerDashboardData = {
+  canListProducts: boolean
+  documents: Array<{
+    contentType: string
+    createdAt: string
+    fileName: string
+    id: string
+    s3Key: string
+    sizeBytes: number | null
+    type: string
+    uploadedAt: string | null
+  }>
+  kycDocumentTypes: string[]
+  missingRequirements: string[]
+  seller: {
+    businessDescription: string
+    defaultCurrency: Currency
+    displayName: string
+    id: string | null
+    kycApprovedAt: string | null
+    kycNotes: string
+    kycRejectedAt: string | null
+    kycStatus: string
+    kycSubmittedAt: string | null
+    legalName: string
+    payoutAccountName: string
+    payoutAccountNumber: string
+    payoutBankName: string
+    payoutRoutingNumber: string
+    slug: string
+    supportEmail: string
+    supportPhone: string
+  }
+  submitDisabled: boolean
+  user: {
+    email: string | null
+    fullName: string
+    id: string
+    phone: string | null
+  }
+}
+
+export type SellerCatalogVariant = {
+  attributes: Record<string, string> | null
+  compareAtPriceMinor: number | null
+  createdAt: string
+  currency: Currency | null
+  id: string
+  inventory: {
+    availableQuantity: number
+    onHandQuantity: number
+    reorderPoint: number | null
+    reservedQuantity: number
+    updatedAt: string
+  } | null
+  isActive: boolean
+  isDefault: boolean
+  name: string
+  position: number
+  priceMinor: number | null
+  sku: string
+  updatedAt: string
+  weightGrams: number | null
+}
+
+export type SellerCatalogProduct = {
+  category: string
+  createdAt: string
+  description: string
+  id: string
+  images: Array<{
+    altText: string
+    id: string
+    isPrimary: boolean
+    position: number
+    url: string
+  }>
+  moderationNotes: string
+  moderationStatus: string
+  name: string
+  publishedAt: string | null
+  returnPolicy: string
+  sellerAddress: string
+  sellerContact: string
+  slug: string
+  status: string
+  updatedAt: string
+  validationIssues: Array<{
+    field: string
+    message: string
+  }>
+  variants: SellerCatalogVariant[]
+}
+
+export type SellerCatalogData = {
+  products: SellerCatalogProduct[]
+  sellerCanActivateProducts: boolean
+  sellerId: string | null
+}
+
+export type SellerShippingQueueData = {
+  carriers: string[]
+  orders: Array<{
+    buyer: {
+      email: string | null
+      fullName: string
+      id: string
+      phone: string | null
+    }
+    canMarkDelivered: boolean
+    canMarkHandedToCarrier: boolean
+    canMarkInTransit: boolean
+    currency: Currency
+    orderId: string
+    orderNumber: string
+    placedAt: string | null
+    shipment: ShipmentSummary | null
+    state: OrderLifecycleState
+    totalMinor: number
+  }>
+}
+
 export type CheckoutConfigResponse = {
   paymentMethods: PaymentMethod[]
 }
@@ -276,6 +398,50 @@ type SubmitCheckoutInput = {
   shippingAddress: CheckoutAddressInput
 }
 
+export type SaveSellerOnboardingInput = {
+  businessDescription?: string | null
+  defaultCurrency?: string | null
+  displayName?: string | null
+  legalName?: string | null
+  payoutAccountName?: string | null
+  payoutAccountNumber?: string | null
+  payoutBankName?: string | null
+  payoutRoutingNumber?: string | null
+  slug?: string | null
+  submitForReview?: boolean | null
+  supportEmail?: string | null
+  supportPhone?: string | null
+}
+
+export type CreateSellerProductInput = {
+  category?: string | null
+  description?: string | null
+  name?: string | null
+  returnPolicy?: string | null
+  sellerAddress?: string | null
+  sellerContact?: string | null
+  slug?: string | null
+  status?: string | null
+  variants?: Array<{
+    currency?: string | null
+    inventoryQuantity?: number | null
+    isActive?: boolean | null
+    isDefault?: boolean | null
+    name?: string | null
+    priceMinor?: number | null
+    reorderPoint?: number | null
+    sku?: string | null
+  }>
+}
+
+export type SaveSellerShipmentInput = {
+  carrier?: string | null
+  message?: string | null
+  status?: string | null
+  trackingNumber?: string | null
+  trackingUrl?: string | null
+}
+
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:3002"
 
 function normalizeBaseUrl(value: string | undefined) {
@@ -292,6 +458,10 @@ export function getApiBaseUrl() {
   return normalizeBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL)
 }
 
+export function getSellerBaseUrl() {
+  return normalizeBaseUrl(process.env.EXPO_PUBLIC_SELLER_BASE_URL) || getApiBaseUrl()
+}
+
 export function resolveAbsoluteUrl(value: string) {
   if (/^https?:\/\//i.test(value)) {
     return value
@@ -302,8 +472,22 @@ export function resolveAbsoluteUrl(value: string) {
   return `${getApiBaseUrl()}${normalizedValue}`
 }
 
-async function requestJson<T>(path: string, options: JsonRequestOptions = {}) {
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+export function resolveAbsoluteSellerUrl(value: string) {
+  if (/^https?:\/\//i.test(value)) {
+    return value
+  }
+
+  const normalizedValue = value.startsWith("/") ? value : `/${value}`
+
+  return `${getSellerBaseUrl()}${normalizedValue}`
+}
+
+async function requestJsonFromBase<T>(
+  baseUrl: string,
+  path: string,
+  options: JsonRequestOptions = {}
+) {
+  const response = await fetch(`${baseUrl}${path}`, {
     body: options.body ? JSON.stringify(options.body) : undefined,
     headers: {
       Accept: "application/json",
@@ -327,6 +511,14 @@ async function requestJson<T>(path: string, options: JsonRequestOptions = {}) {
   }
 
   return payload as T
+}
+
+async function requestJson<T>(path: string, options: JsonRequestOptions = {}) {
+  return requestJsonFromBase<T>(getApiBaseUrl(), path, options)
+}
+
+async function requestSellerJson<T>(path: string, options: JsonRequestOptions = {}) {
+  return requestJsonFromBase<T>(getSellerBaseUrl(), path, options)
 }
 
 export async function requestOtp(identifier: string) {
@@ -422,4 +614,50 @@ export async function readOrderTracking(token: string, orderId: string) {
       token
     }
   )
+}
+
+export async function readSellerDashboard(token: string) {
+  return requestSellerJson<SellerDashboardData>("/api/onboarding", {
+    token
+  })
+}
+
+export async function saveSellerOnboarding(token: string, input: SaveSellerOnboardingInput) {
+  return requestSellerJson<SellerDashboardData>("/api/onboarding", {
+    body: input,
+    method: "POST",
+    token
+  })
+}
+
+export async function readSellerCatalog(token: string) {
+  return requestSellerJson<SellerCatalogData>("/api/products", {
+    token
+  })
+}
+
+export async function createSellerProduct(token: string, input: CreateSellerProductInput) {
+  return requestSellerJson<SellerCatalogProduct>("/api/products", {
+    body: input,
+    method: "POST",
+    token
+  })
+}
+
+export async function readSellerShippingQueue(token: string) {
+  return requestSellerJson<SellerShippingQueueData>("/api/shipping", {
+    token
+  })
+}
+
+export async function saveSellerShipment(
+  token: string,
+  orderId: string,
+  input: SaveSellerShipmentInput
+) {
+  return requestSellerJson<ShipmentSummary>(`/api/orders/${encodeURIComponent(orderId)}/shipment`, {
+    body: input,
+    method: "POST",
+    token
+  })
 }
