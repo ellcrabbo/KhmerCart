@@ -163,6 +163,7 @@ Important variables:
 - `AUTH_OTP_VERIFY_LIMIT`
 - `AUTH_OTP_VERIFY_IP_LIMIT`
 - `KYC_DOCUMENT_TYPES`
+- `CARRIERS`
 - `S3_ENDPOINT`
 - `S3_BUCKET`
 - `S3_KEY`
@@ -173,6 +174,13 @@ Important variables:
 - `PAYWAY_API_KEY`
 
 The buyer app defaults to English and supports locale switching between English and Khmer.
+
+Shipping notes:
+
+- KhmerCart now defaults to manual shipping first with `CARRIERS=OTHER`.
+- Sellers can record any real carrier or rider name plus a public tracking URL from the seller shipping desk.
+- If you later secure a real carrier integration, add it back through `CARRIERS`, for example `CARRIERS=OTHER,JNT`.
+- `JNT_API_KEY`, `GRAB_CLIENT_ID`, `GRAB_CLIENT_SECRET`, and `CAMBODIA_POST_API_KEY` remain optional until you wire a real provider.
 
 PayWay notes:
 

@@ -12,6 +12,13 @@ export type ShippingConfig = {
   jntApiKey?: string;
 };
 
+export const SHIPPING_CARRIER_LABELS: Record<ShippingCarrier, string> = {
+  CAMBODIA_POST: "Cambodia Post",
+  GRABEXPRESS: "GrabExpress",
+  JNT: "J&T Express",
+  OTHER: "Manual delivery"
+};
+
 function normalizeOptionalValue(value: string | undefined): string | undefined {
   const normalized = value?.trim();
 
@@ -27,6 +34,20 @@ export function isShippingCarrier(value: string | null | undefined): value is Sh
   );
 }
 
+export function formatShippingCarrierLabel(value: string | null | undefined): string | null {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const uppercased = normalized.toUpperCase();
+
+  return isShippingCarrier(uppercased)
+    ? SHIPPING_CARRIER_LABELS[uppercased]
+    : normalized;
+}
+
 export function readShippingConfig(
   env: NodeJS.ProcessEnv = process.env
 ): ShippingConfig {
@@ -37,11 +58,12 @@ export function readShippingConfig(
         .split(",")
         .map((value) => value.trim().toUpperCase())
         .filter((value): value is ShippingCarrier => isShippingCarrier(value))
-    : [...(["JNT", "GRABEXPRESS", "CAMBODIA_POST", "OTHER"] as const)];
+    : ["OTHER"];
 
   return {
     cambodiaPostApiKey: normalizeOptionalValue(env.CAMBODIA_POST_API_KEY),
-    carriers: carriers.length > 0 ? Array.from(new Set(carriers)) : ["OTHER"],
+    carriers:
+      carriers.length > 0 ? (Array.from(new Set(carriers)) as ShippingCarrier[]) : ["OTHER"],
     grab: {
       clientId: normalizeOptionalValue(env.GRAB_CLIENT_ID),
       clientSecret: normalizeOptionalValue(env.GRAB_CLIENT_SECRET)

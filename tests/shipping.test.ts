@@ -180,6 +180,49 @@ describe("shipping service", () => {
     }
   );
 
+  it("supports manual shipping with a custom carrier name and public tracking url", async () => {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const fixture = await createShippingFixture({
+      state: "SELLER_CONFIRMED",
+      suffix
+    });
+
+    try {
+      const result = await saveSellerShipment({
+        carrier: "OTHER",
+        carrierLabel: "Local rider",
+        message: "Driver called and is delivering this afternoon.",
+        orderId: fixture.order.id,
+        trackingNumber: `MANUAL-${suffix.toUpperCase()}`,
+        trackingUrl: `https://tracking.example/manual/${suffix}`,
+        userId: fixture.sellerUser.id
+      });
+
+      expect(result.state).toBe("HANDED_TO_CARRIER");
+      expect(result.shipment?.status).toBe("HANDED_TO_CARRIER");
+      expect(result.shipment?.carrier).toBe("Local rider");
+      expect(result.shipment?.carrierCode).toBe("OTHER");
+      expect(result.shipment?.trackingNumber).toBe(`MANUAL-${suffix.toUpperCase()}`);
+      expect(result.shipment?.trackingUrl).toBe(`https://tracking.example/manual/${suffix}`);
+
+      const persistedShipment = await prisma.shipment.findUniqueOrThrow({
+        where: {
+          orderId: fixture.order.id
+        }
+      });
+
+      expect(persistedShipment.carrier).toBe("Local rider");
+      expect(persistedShipment.providerShipmentId).toBeNull();
+      expect(persistedShipment.trackingUrl).toBe(`https://tracking.example/manual/${suffix}`);
+    } finally {
+      await cleanupFixture({
+        orderIds: [fixture.order.id],
+        sellerIds: [fixture.seller.id],
+        userIds: [fixture.buyer.id, fixture.sellerUser.id]
+      });
+    }
+  });
+
   it("only returns tracking updates to the buyer who owns the order", async () => {
     const suffix = crypto.randomUUID().slice(0, 8);
     const fixture = await createShippingFixture({

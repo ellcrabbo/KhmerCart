@@ -2,6 +2,7 @@ import {
   detectPaywaySandboxPlaceholderQr,
   formatDisputeReason,
   formatDisputeStatus,
+  formatShippingCarrierLabel,
   formatKycStatus
 } from "@khmercart/core";
 import type { AuthConfig } from "@khmercart/core/auth";
@@ -179,7 +180,6 @@ export type AdminPaymentConsoleEntry = {
   status: PaymentStatus;
   updatedAt: string;
 };
-
 export type AdminPaymentDetail = AdminPaymentConsoleEntry & {
   buyerEmail: string | null;
   buyerPhone: string | null;
@@ -226,6 +226,152 @@ export type AdminPaymentDetail = AdminPaymentConsoleEntry & {
   };
   qrPayload: string | null;
   sellerSlug: string;
+};
+
+const adminOrderDetailInclude = {
+  buyer: true,
+  events: {
+    include: {
+      actorUser: {
+        select: {
+          fullName: true
+        }
+      }
+    },
+    orderBy: [{ createdAt: "desc" }]
+  },
+  items: {
+    orderBy: [{ id: "asc" }]
+  },
+  payments: {
+    include: {
+      events: {
+        orderBy: {
+          receivedAt: "desc"
+        },
+        take: 3
+      }
+    },
+    orderBy: [{ createdAt: "desc" }]
+  },
+  seller: true,
+  shipment: {
+    include: {
+      events: {
+        include: {
+          actorUser: {
+            select: {
+              fullName: true
+            }
+          }
+        },
+        orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }]
+      }
+    }
+  }
+} satisfies Prisma.OrderInclude;
+
+type AdminOrderRecord = Prisma.OrderGetPayload<{
+  include: typeof adminOrderDetailInclude;
+}>;
+
+export type AdminOrderAddress = {
+  lines: string[];
+  recipient: string | null;
+};
+
+export type AdminOrderDetail = {
+  addresses: {
+    billing: AdminOrderAddress | null;
+    shipping: AdminOrderAddress | null;
+  };
+  buyer: {
+    email: string | null;
+    fullName: string;
+    id: string;
+    phone: string | null;
+  };
+  createdAt: string;
+  currency: string;
+  events: Array<{
+    actorName: string | null;
+    createdAt: string;
+    fromState: string | null;
+    id: string;
+    message: string | null;
+    toState: string | null;
+    type: string;
+  }>;
+  id: string;
+  items: Array<{
+    id: string;
+    lineTotalMinor: number;
+    quantity: number;
+    sku: string;
+    title: string;
+    variantName: string;
+  }>;
+  notes: string | null;
+  orderNumber: string;
+  paymentMethod: PaymentMethod;
+  payments: Array<{
+    amountMinor: number;
+    checkoutUrl: string | null;
+    createdAt: string;
+    failedAt: string | null;
+    id: string;
+    lastReconciledAt: string | null;
+    latestEvent:
+      | {
+          eventType: string;
+          providerEventId: string | null;
+          providerStatus: string;
+          receivedAt: string;
+          signatureVerified: boolean;
+        }
+      | null;
+    method: PaymentMethod;
+    payway: AdminPaymentConsoleEntry["payway"];
+    provider: PaymentProvider;
+    providerPaymentId: string | null;
+    providerReference: string | null;
+    status: PaymentStatus;
+    updatedAt: string;
+  }>;
+  placedAt: string | null;
+  seller: {
+    displayName: string;
+    id: string;
+    slug: string;
+    supportEmail: string | null;
+    supportPhone: string | null;
+  };
+  shipment:
+    | {
+        carrier: string | null;
+        carrierCode: string | null;
+        deliveredAt: string | null;
+        id: string;
+        providerShipmentId: string | null;
+        shippedAt: string | null;
+        status: string;
+        trackingNumber: string | null;
+        trackingUrl: string | null;
+        updates: Array<{
+          actorName: string | null;
+          createdAt: string;
+          id: string;
+          message: string | null;
+          occurredAt: string;
+          source: string;
+          status: string;
+        }>;
+      }
+    | null;
+  state: string;
+  subtotalMinor: number;
+  totalMinor: number;
+  updatedAt: string;
 };
 
 function serializeDate(value: Date | null | undefined): string | null {
@@ -283,6 +429,36 @@ function readNestedJsonText(
   }
 
   return null;
+}
+
+function readAddressLines(value: unknown): AdminOrderAddress | null {
+  const payload = readJsonRecord(value);
+
+  if (!payload) {
+    return null;
+  }
+
+  const recipient = readJsonText(payload.fullName) ?? readJsonText(payload.name);
+  const lines = [
+    readJsonText(payload.phone),
+    readJsonText(payload.line1),
+    readJsonText(payload.line2),
+    [
+      readJsonText(payload.city),
+      readJsonText(payload.province),
+      readJsonText(payload.postalCode)
+    ]
+      .filter(Boolean)
+      .join(", "),
+    readJsonText(payload.country)
+  ].filter((line): line is string => Boolean(line));
+
+  return recipient || lines.length > 0
+    ? {
+        lines,
+        recipient
+      }
+    : null;
 }
 
 function orderedRoles(roles: Iterable<UserRole>): UserRole[] {
@@ -971,6 +1147,123 @@ export async function getPaymentDetail(
     sellerSlug: payment.order.seller.slug,
     status: payment.status,
     updatedAt: payment.updatedAt.toISOString()
+  };
+}
+
+export async function getAdminOrderDetail(orderId: string): Promise<AdminOrderDetail | null> {
+  const order: AdminOrderRecord | null = await prisma.order.findUnique({
+    include: adminOrderDetailInclude,
+    where: {
+      id: orderId
+    }
+  });
+
+  if (!order) {
+    return null;
+  }
+
+  return {
+    addresses: {
+      billing: readAddressLines(order.billingAddress),
+      shipping: readAddressLines(order.shippingAddress)
+    },
+    buyer: {
+      email: order.buyer.email,
+      fullName: order.buyer.fullName,
+      id: order.buyer.id,
+      phone: order.buyer.phone
+    },
+    createdAt: order.createdAt.toISOString(),
+    currency: order.currency,
+    events: order.events.map((event) => ({
+      actorName: event.actorUser?.fullName ?? null,
+      createdAt: event.createdAt.toISOString(),
+      fromState: event.fromState,
+      id: event.id,
+      message: event.message,
+      toState: event.toState,
+      type: event.type
+    })),
+    id: order.id,
+    items: order.items.map((item) => ({
+      id: item.id,
+      lineTotalMinor: item.subtotalMinor,
+      quantity: item.quantity,
+      sku: item.sku,
+      title: item.productName,
+      variantName: item.variantName
+    })),
+    notes: order.notes,
+    orderNumber: order.orderNumber,
+    paymentMethod: order.paymentMethod,
+    payments: order.payments.map((payment) => {
+      const metadata = readJsonRecord(payment.metadata);
+      const latestEvent = payment.events[0] ?? null;
+
+      return {
+        amountMinor: payment.amountMinor,
+        checkoutUrl: payment.checkoutUrl,
+        createdAt: payment.createdAt.toISOString(),
+        failedAt: serializeDate(payment.failedAt),
+        id: payment.id,
+        lastReconciledAt: serializeDate(payment.lastReconciledAt),
+        latestEvent: latestEvent
+          ? {
+              eventType: latestEvent.eventType,
+              providerEventId: latestEvent.providerEventId,
+              providerStatus: latestEvent.providerStatus,
+              receivedAt: latestEvent.receivedAt.toISOString(),
+              signatureVerified: latestEvent.signatureVerified
+            }
+          : null,
+        method: payment.method,
+        payway: payment.provider === PaymentProvider.PAYWAY
+          ? readPaywayConsoleDetails(metadata)
+          : null,
+        provider: payment.provider,
+        providerPaymentId: payment.providerPaymentId,
+        providerReference: payment.providerReference,
+        status: payment.status,
+        updatedAt: payment.updatedAt.toISOString()
+      };
+    }),
+    placedAt: serializeDate(order.placedAt),
+    seller: {
+      displayName: order.seller.displayName,
+      id: order.seller.id,
+      slug: order.seller.slug,
+      supportEmail: order.seller.supportEmail,
+      supportPhone: order.seller.supportPhone
+    },
+    shipment: order.shipment
+      ? {
+          carrier:
+            formatShippingCarrierLabel(order.shipment.carrier) ?? order.shipment.carrier ?? null,
+          carrierCode: readNestedJsonText(readJsonRecord(order.shipment.metadata), [
+            "providerCarrier"
+          ]),
+          deliveredAt: serializeDate(order.shipment.deliveredAt),
+          id: order.shipment.id,
+          providerShipmentId: order.shipment.providerShipmentId,
+          shippedAt: serializeDate(order.shipment.shippedAt),
+          status: order.shipment.status,
+          trackingNumber: order.shipment.trackingNumber,
+          trackingUrl: order.shipment.trackingUrl,
+          updates: order.shipment.events.map((event) => ({
+            actorName: event.actorUser?.fullName ?? null,
+            createdAt: event.createdAt.toISOString(),
+            id: event.id,
+            message: event.message,
+            occurredAt: event.occurredAt.toISOString(),
+            source: event.source,
+            status: event.status
+          }))
+        }
+      : null,
+    state: order.state,
+    subtotalMinor: order.subtotalMinor,
+    totalMinor: order.totalMinor,
+    updatedAt: order.updatedAt.toISOString()
   };
 }
 
