@@ -180,6 +180,54 @@ export type AdminPaymentConsoleEntry = {
   updatedAt: string;
 };
 
+export type AdminPaymentDetail = AdminPaymentConsoleEntry & {
+  buyerEmail: string | null;
+  buyerPhone: string | null;
+  events: Array<{
+    eventType: string;
+    headersHash: string | null;
+    id: string;
+    idempotencyKey: string | null;
+    payloadHash: string;
+    processedAt: string | null;
+    providerEventId: string | null;
+    providerStatus: string;
+    receivedAt: string;
+    signatureVerified: boolean;
+  }>;
+  instructions: string | null;
+  metadata: unknown;
+  order: {
+    cancelledAt: string | null;
+    createdAt: string;
+    currency: string;
+    discountMinor: number;
+    id: string;
+    items: Array<{
+      id: string;
+      productName: string;
+      quantity: number;
+      sku: string;
+      subtotalMinor: number;
+      unitPriceMinor: number;
+      variantName: string;
+    }>;
+    notes: string | null;
+    paidAt: string | null;
+    paymentMethod: PaymentMethod;
+    paymentReference: string | null;
+    placedAt: string | null;
+    shippingMinor: number;
+    state: string;
+    subtotalMinor: number;
+    taxMinor: number;
+    totalMinor: number;
+    updatedAt: string;
+  };
+  qrPayload: string | null;
+  sellerSlug: string;
+};
+
 function serializeDate(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
@@ -809,6 +857,121 @@ export async function listRecentPayments(
       updatedAt: payment.updatedAt.toISOString()
     };
   });
+}
+
+export async function getPaymentDetail(
+  paymentId: string
+): Promise<AdminPaymentDetail | null> {
+  const payment = await prisma.payment.findUnique({
+    include: {
+      events: {
+        orderBy: {
+          receivedAt: "desc"
+        },
+        take: 25
+      },
+      order: {
+        include: {
+          buyer: true,
+          items: {
+            orderBy: {
+              id: "asc"
+            }
+          },
+          seller: true
+        }
+      }
+    },
+    where: {
+      id: paymentId
+    }
+  });
+
+  if (!payment) {
+    return null;
+  }
+
+  const metadata = readJsonRecord(payment.metadata);
+  const latestEvent = payment.events[0] ?? null;
+
+  return {
+    amountMinor: payment.amountMinor,
+    buyerEmail: payment.order.buyer.email,
+    buyerName: payment.order.buyer.fullName,
+    buyerPhone: payment.order.buyer.phone,
+    checkoutUrl: payment.checkoutUrl,
+    createdAt: payment.createdAt.toISOString(),
+    currency: payment.currency,
+    events: payment.events.map((event) => ({
+      eventType: event.eventType,
+      headersHash: event.headersHash,
+      id: event.id,
+      idempotencyKey: event.idempotencyKey,
+      payloadHash: event.payloadHash,
+      processedAt: serializeDate(event.processedAt),
+      providerEventId: event.providerEventId,
+      providerStatus: event.providerStatus,
+      receivedAt: event.receivedAt.toISOString(),
+      signatureVerified: event.signatureVerified
+    })),
+    failedAt: serializeDate(payment.failedAt),
+    id: payment.id,
+    instructions: payment.instructions,
+    lastReconciledAt: serializeDate(payment.lastReconciledAt),
+    latestEvent: latestEvent
+      ? {
+          eventType: latestEvent.eventType,
+          providerEventId: latestEvent.providerEventId,
+          providerStatus: latestEvent.providerStatus,
+          receivedAt: latestEvent.receivedAt.toISOString(),
+          signatureVerified: latestEvent.signatureVerified
+        }
+      : null,
+    metadata: payment.metadata,
+    method: payment.method,
+    order: {
+      cancelledAt: serializeDate(payment.order.cancelledAt),
+      createdAt: payment.order.createdAt.toISOString(),
+      currency: payment.order.currency,
+      discountMinor: payment.order.discountMinor,
+      id: payment.order.id,
+      items: payment.order.items.map((item) => ({
+        id: item.id,
+        productName: item.productName,
+        quantity: item.quantity,
+        sku: item.sku,
+        subtotalMinor: item.subtotalMinor,
+        unitPriceMinor: item.unitPriceMinor,
+        variantName: item.variantName
+      })),
+      notes: payment.order.notes,
+      paidAt: serializeDate(payment.order.paidAt),
+      paymentMethod: payment.order.paymentMethod,
+      paymentReference: payment.order.paymentReference,
+      placedAt: serializeDate(payment.order.placedAt),
+      shippingMinor: payment.order.shippingMinor,
+      state: payment.order.state,
+      subtotalMinor: payment.order.subtotalMinor,
+      taxMinor: payment.order.taxMinor,
+      totalMinor: payment.order.totalMinor,
+      updatedAt: payment.order.updatedAt.toISOString()
+    },
+    orderId: payment.orderId,
+    orderNumber: payment.order.orderNumber,
+    orderState: payment.order.state,
+    payway:
+      payment.provider === PaymentProvider.PAYWAY
+        ? readPaywayConsoleDetails(metadata)
+        : null,
+    provider: payment.provider,
+    providerPaymentId: payment.providerPaymentId,
+    providerReference: payment.providerReference,
+    qrPayload: payment.qrPayload,
+    sellerName: payment.order.seller.displayName,
+    sellerSlug: payment.order.seller.slug,
+    status: payment.status,
+    updatedAt: payment.updatedAt.toISOString()
+  };
 }
 
 export async function listUserDirectory(limit = 120): Promise<AdminUserDirectoryEntry[]> {

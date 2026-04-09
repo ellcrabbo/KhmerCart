@@ -1,4 +1,8 @@
+"use client";
+
 import type { AdminPaymentConsoleEntry } from "@khmercart/db";
+import Link from "next/link";
+import { useState } from "react";
 
 const PAYWAY_STATUS_BASE_URL = "https://api.khmercart.shop";
 
@@ -49,13 +53,48 @@ function orderTone(state: string) {
 export function PaymentOperationsConsole({
   payments
 }: PaymentOperationsConsoleProps) {
-  const pendingCount = payments.filter((payment) =>
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [providerFilter, setProviderFilter] = useState("ALL");
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const providers = [...new Set(payments.map((payment) => payment.provider))];
+  const statuses = [...new Set(payments.map((payment) => payment.status))];
+  const filteredPayments = payments.filter((payment) => {
+    if (statusFilter !== "ALL" && payment.status !== statusFilter) {
+      return false;
+    }
+
+    if (providerFilter !== "ALL" && payment.provider !== providerFilter) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    return [
+      payment.orderNumber,
+      payment.buyerName,
+      payment.sellerName,
+      payment.provider,
+      payment.providerPaymentId ?? "",
+      payment.providerReference ?? "",
+      payment.latestEvent?.providerEventId ?? "",
+      payment.id
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery);
+  });
+
+  const pendingCount = filteredPayments.filter((payment) =>
     payment.status === "PENDING" ||
     payment.status === "PROCESSING" ||
     payment.status === "AUTHORIZED"
   ).length;
-  const succeededCount = payments.filter((payment) => payment.status === "SUCCEEDED").length;
-  const actionNeededCount = payments.filter((payment) =>
+  const succeededCount = filteredPayments.filter((payment) => payment.status === "SUCCEEDED").length;
+  const actionNeededCount = filteredPayments.filter((payment) =>
     payment.status === "FAILED" ||
     payment.status === "CANCELLED" ||
     payment.status === "EXPIRED"
@@ -74,8 +113,58 @@ export function PaymentOperationsConsole({
             </h2>
           </div>
           <span className="rounded-full bg-stone-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-stone-700">
-            {payments.length} payments
+            {filteredPayments.length} of {payments.length} payments
           </span>
+        </div>
+
+        <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(12rem,0.7fr)_minmax(12rem,0.7fr)]">
+          <label className="grid gap-2 text-sm text-stone-700">
+            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-stone-500">
+              Search
+            </span>
+            <input
+              className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-sky-500/60 focus:bg-white"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Order, buyer, seller, provider ref, event id"
+              value={query}
+            />
+          </label>
+
+          <label className="grid gap-2 text-sm text-stone-700">
+            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-stone-500">
+              Payment status
+            </span>
+            <select
+              className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-sky-500/60 focus:bg-white"
+              onChange={(event) => setStatusFilter(event.target.value)}
+              value={statusFilter}
+            >
+              <option value="ALL">All statuses</option>
+              {statuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-2 text-sm text-stone-700">
+            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-stone-500">
+              Provider
+            </span>
+            <select
+              className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-sky-500/60 focus:bg-white"
+              onChange={(event) => setProviderFilter(event.target.value)}
+              value={providerFilter}
+            >
+              <option value="ALL">All providers</option>
+              {providers.map((provider) => (
+                <option key={provider} value={provider}>
+                  {provider}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -100,12 +189,12 @@ export function PaymentOperationsConsole({
         </div>
 
         <div className="mt-6 space-y-4">
-          {payments.length === 0 ? (
+          {filteredPayments.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-black/10 bg-stone-50/85 px-5 py-6 text-sm text-stone-600">
-              No payments have been created yet.
+              No payments matched the current filters.
             </div>
           ) : (
-            payments.map((payment) => {
+            filteredPayments.map((payment) => {
               const statusPageHref =
                 payment.provider === "PAYWAY"
                   ? `${PAYWAY_STATUS_BASE_URL}/payments/payway/complete?orderId=${encodeURIComponent(payment.orderId)}`
@@ -124,6 +213,12 @@ export function PaymentOperationsConsole({
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <Link
+                        className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-stone-700 transition hover:-translate-y-0.5"
+                        href={`/payments/${payment.id}`}
+                      >
+                        Details
+                      </Link>
                       <span
                         className={[
                           "rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em]",
