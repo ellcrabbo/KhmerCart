@@ -594,6 +594,7 @@ async function requestJsonFromBase<T>(
   path: string,
   options: JsonRequestOptions = {}
 ) {
+  const requestUrl = `${baseUrl}${path}`
   const response = await fetch(`${baseUrl}${path}`, {
     body: options.body ? JSON.stringify(options.body) : undefined,
     headers: {
@@ -605,7 +606,27 @@ async function requestJsonFromBase<T>(
     method: options.method ?? "GET"
   })
   const text = await response.text()
-  const payload = text ? (JSON.parse(text) as unknown) : null
+  const contentType = response.headers.get("content-type") ?? ""
+  const looksJson =
+    !text ||
+    contentType.toLowerCase().includes("application/json") ||
+    /^[\s\r\n]*[{[]/.test(text)
+  let payload: unknown = null
+
+  if (looksJson && text) {
+    try {
+      payload = JSON.parse(text) as unknown
+    } catch {
+      throw new Error(
+        `Expected JSON from ${requestUrl} but received an unreadable response.`
+      )
+    }
+  } else if (text) {
+    const responseKind = contentType || "non-JSON content"
+    throw new Error(
+      `Expected JSON from ${requestUrl} but received ${responseKind} (${response.status}).`
+    )
+  }
 
   if (!response.ok) {
     const apiError = payload as ApiErrorResponse | null

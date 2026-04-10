@@ -10,7 +10,7 @@
     "scheme": "khmercart-mobile",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -43,7 +43,8 @@
       }
     },
     "plugins": [
-      "expo-video"
+      "expo-video",
+      "./withFmtCxx17"
     ]
   }
 }
