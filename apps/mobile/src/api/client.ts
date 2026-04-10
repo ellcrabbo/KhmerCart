@@ -152,7 +152,7 @@ export type BuyerVideoFeedItem = {
     aspectRatio: number | null
     durationSec: number | null
     posterUrl: string | null
-    url: string
+    url: string | null
   }
 }
 
@@ -448,7 +448,7 @@ export type SellerVideoPost = {
   video: {
     aspectRatio: number | null
     durationSec: number | null
-    url: string
+    url: string | null
   }
 }
 

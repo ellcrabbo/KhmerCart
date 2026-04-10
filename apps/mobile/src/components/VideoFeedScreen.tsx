@@ -47,19 +47,25 @@ function VideoFeedCard({
   onOpenProduct
 }: VideoFeedCardProps) {
   const dictionary = getBuyerDictionary(locale);
-  const player = useVideoPlayer(item.video.url, (instance) => {
+  const hasPlayableVideo = Boolean(item.video.url);
+  const player = useVideoPlayer(item.video.url ?? "", (instance) => {
     instance.loop = true;
     instance.muted = true;
   });
 
   useEffect(() => {
+    if (!hasPlayableVideo) {
+      player.pause();
+      return;
+    }
+
     if (active) {
       player.play();
       return;
     }
 
     player.pause();
-  }, [active, player]);
+  }, [active, hasPlayableVideo, player]);
 
   return (
     <View style={styles.card}>
@@ -73,12 +79,14 @@ function VideoFeedCard({
           />
         ) : null}
 
-        <VideoView
-          allowsFullscreen
-          nativeControls={false}
-          player={player}
-          style={styles.video}
-        />
+        {hasPlayableVideo ? (
+          <VideoView
+            allowsFullscreen
+            nativeControls={false}
+            player={player}
+            style={styles.video}
+          />
+        ) : null}
 
         <View style={styles.overlay}>
           <View style={styles.overlayHeader}>
