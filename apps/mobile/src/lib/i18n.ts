@@ -1,7 +1,7 @@
 import type {
   OrderLifecycleState,
   PaymentMethod,
-  ShipmentStatus
+  ShipmentStatus,
 } from "../api/client";
 
 export const BUYER_LOCALES = ["en", "km"] as const;
@@ -104,6 +104,15 @@ type MobileDictionary = {
   sellerCenter: string;
   sellerCreateVideoPost: string;
   sellerCreateListing: string;
+  sellerCreateTab: string;
+  sellerCreatorBody: string;
+  sellerCreatorMilestone: string;
+  sellerCreatorNoApprovedProducts: string;
+  sellerCreatorPostReady: string;
+  sellerCreatorProductReady: string;
+  sellerCreatorStepListing: string;
+  sellerCreatorStepLive: string;
+  sellerCreatorStepVideo: string;
   sellerDefaultCurrency: string;
   sellerDescription: string;
   sellerDisplayName: string;
@@ -254,17 +263,31 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     sellerAddress: "Seller address",
     sellerSupport: "Seller support",
     sessionSignedIn: "Signed in as",
-    shipmentPending: "Shipment updates will appear here once the seller hands the order to a carrier.",
+    shipmentPending:
+      "Shipment updates will appear here once the seller hands the order to a carrier.",
     shipmentTimeline: "Shipment timeline",
     shippingAddress: "Shipping address",
     signInRequired: "Sign in with a buyer session before using the cart.",
-    signInToShop: "Sign in to unlock bag, checkout, and order tracking on this device.",
+    signInToShop:
+      "Sign in to unlock bag, checkout, and order tracking on this device.",
     signOut: "Sign out",
     sellerCatalogTab: "Catalog",
     sellerCaption: "Caption and selling hook",
     sellerCenter: "Seller Center",
     sellerCreateVideoPost: "Create shoppable post",
     sellerCreateListing: "Create listing",
+    sellerCreateTab: "Create",
+    sellerCreatorBody:
+      "Build the TikTok Shop loop from your phone: list one product, attach a vertical clip, publish, then check it in the buyer feed.",
+    sellerCreatorMilestone:
+      "Published posts appear in the buyer video feed once the attached product is active and approved.",
+    sellerCreatorNoApprovedProducts:
+      "The selected product is not public-ready yet. Use an active, approved product for a live feed post, or save the video as a draft.",
+    sellerCreatorPostReady: "Live posts",
+    sellerCreatorProductReady: "Ready products",
+    sellerCreatorStepListing: "Create the product",
+    sellerCreatorStepLive: "Check the storefront",
+    sellerCreatorStepVideo: "Attach the video",
     sellerDefaultCurrency: "Default currency",
     sellerDescription: "Business description",
     sellerDisplayName: "Store display name",
@@ -292,7 +315,8 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
       "Upload a vertical clip, attach one approved product, and publish it into the buyer video feed.",
     sellerPostsTab: "Posts",
     sellerNoPosterSelected: "No poster selected yet.",
-    sellerNoPosts: "No shoppable posts yet. Publish one clip to start the feed.",
+    sellerNoPosts:
+      "No shoppable posts yet. Publish one clip to start the feed.",
     sellerNoVideoSelected: "No video selected yet.",
     sellerPublishVideoPost: "Publish post",
     sellerQuickListingBody:
@@ -324,7 +348,7 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     videoFeedEmpty: "No video posts are live yet.",
     videoFeedLoading: "Loading video feed...",
     verifyOtp: "Verify OTP",
-    viewStorefront: "Back to storefront"
+    viewStorefront: "Back to storefront",
   },
   km: {
     accountTab: "គណនី",
@@ -341,7 +365,8 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     backToCart: "ត្រឡប់ទៅកន្ត្រក",
     backToFeed: "ត្រឡប់ទៅការរកមើល",
     backToPayment: "ត្រឡប់ទៅការទូទាត់",
-    billingSameAsShipping: "អាសយដ្ឋានវិក្កយបត្រប្រើព័ត៌មានដូចអាសយដ្ឋានដឹកជញ្ជូនសិន។",
+    billingSameAsShipping:
+      "អាសយដ្ឋានវិក្កយបត្រប្រើព័ត៌មានដូចអាសយដ្ឋានដឹកជញ្ជូនសិន។",
     browseTitle: "បញ្ជីវីដេអូលក់ទំនិញ",
     cartEmpty: "កន្ត្រកទំនិញទទេ។ បន្ថែមទំនិញមុនពេល checkout។",
     cartLoading: "កំពុងធ្វើបច្ចុប្បន្នកន្ត្រក...",
@@ -372,7 +397,8 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     homeTab: "ដើម",
     heroBody:
       "អូសមើលវីដេអូពីអ្នកលក់ បើកទំនិញភ្លាមៗ ហើយរក្សា checkout ឱ្យលឿនសម្រាប់ការទិញបែប impulse shopping។",
-    heroTitle: "ពាណិជ្ជកម្មកម្ពុជាគួរតែមានអារម្មណ៍ដូច content មិនមែនកាតាឡុកធម្មតា។",
+    heroTitle:
+      "ពាណិជ្ជកម្មកម្ពុជាគួរតែមានអារម្មណ៍ដូច content មិនមែនកាតាឡុកធម្មតា។",
     identifierPlaceholder: "អ៊ីមែល ឬ លេខទូរស័ព្ទ",
     itemQuantity: "ចំនួន",
     itemsLabel: "មុខទំនិញ",
@@ -417,17 +443,31 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     sellerAddress: "អាសយដ្ឋានអ្នកលក់",
     sellerSupport: "ជំនួយអ្នកលក់",
     sessionSignedIn: "បានចូលជា",
-    shipmentPending: "ព័ត៌មានដឹកជញ្ជូននឹងបង្ហាញនៅទីនេះ នៅពេលអ្នកលក់ផ្ទេរទំនិញឱ្យក្រុមហ៊ុនដឹកជញ្ជូន។",
+    shipmentPending:
+      "ព័ត៌មានដឹកជញ្ជូននឹងបង្ហាញនៅទីនេះ នៅពេលអ្នកលក់ផ្ទេរទំនិញឱ្យក្រុមហ៊ុនដឹកជញ្ជូន។",
     shipmentTimeline: "ប្រវត្តិដឹកជញ្ជូន",
     shippingAddress: "អាសយដ្ឋានដឹកជញ្ជូន",
     signInRequired: "សូមចូល buyer session មុនពេលប្រើកន្ត្រក។",
-    signInToShop: "សូមចូលគណនី ដើម្បីប្រើកន្ត្រក checkout និងតាមដានការបញ្ជាទិញនៅលើឧបករណ៍នេះ។",
+    signInToShop:
+      "សូមចូលគណនី ដើម្បីប្រើកន្ត្រក checkout និងតាមដានការបញ្ជាទិញនៅលើឧបករណ៍នេះ។",
     signOut: "ចេញ",
     sellerCatalogTab: "កាតាឡុក",
     sellerCaption: "Caption និង hook លក់",
     sellerCenter: "ផ្ទាំងអ្នកលក់",
     sellerCreateVideoPost: "បង្កើត post ទំនិញ",
     sellerCreateListing: "បង្កើតទំនិញ",
+    sellerCreateTab: "បង្កើត",
+    sellerCreatorBody:
+      "បង្កើត loop ដូច TikTok Shop ពីទូរស័ព្ទ៖ បង្កើតទំនិញ ភ្ជាប់វីដេអូបញ្ឈរ បង្ហោះ ហើយពិនិត្យក្នុង buyer feed។",
+    sellerCreatorMilestone:
+      "Post ដែលបានបង្ហោះនឹងបង្ហាញក្នុង buyer video feed បន្ទាប់ពីទំនិញភ្ជាប់មានស្ថានភាព active និង approved។",
+    sellerCreatorNoApprovedProducts:
+      "ទំនិញដែលបានជ្រើសមិនទាន់រួចរាល់សម្រាប់ public feed ទេ។ ប្រើទំនិញ active និង approved ឬរក្សាទុកវីដេអូជា draft។",
+    sellerCreatorPostReady: "Post live",
+    sellerCreatorProductReady: "ទំនិញរួចរាល់",
+    sellerCreatorStepListing: "បង្កើតទំនិញ",
+    sellerCreatorStepLive: "ពិនិត្យ storefront",
+    sellerCreatorStepVideo: "ភ្ជាប់វីដេអូ",
     sellerDefaultCurrency: "រូបិយប័ណ្ណលំនាំដើម",
     sellerDescription: "ពិពណ៌នាអាជីវកម្ម",
     sellerDisplayName: "ឈ្មោះហាង",
@@ -487,8 +527,8 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     videoFeedEmpty: "មិនទាន់មាន video post ដាក់ផ្សាយទេ។",
     videoFeedLoading: "កំពុងទាញ video feed...",
     verifyOtp: "បញ្ជាក់ OTP",
-    viewStorefront: "ត្រឡប់ទៅហាង"
-  }
+    viewStorefront: "ត្រឡប់ទៅហាង",
+  },
 };
 
 export function getBuyerDictionary(locale: BuyerLocale): MobileDictionary {
@@ -501,13 +541,15 @@ export function readDefaultBuyerLocale(): BuyerLocale {
   return value === "km" ? "km" : "en";
 }
 
-export function resolveBuyerLocale(value: string | null | undefined): BuyerLocale {
+export function resolveBuyerLocale(
+  value: string | null | undefined,
+): BuyerLocale {
   return value === "km" ? "km" : "en";
 }
 
 export function resolveAvailabilityFromState(
   locale: BuyerLocale,
-  state: "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK"
+  state: "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK",
 ) {
   const dictionary = getBuyerDictionary(locale);
 
@@ -524,7 +566,7 @@ export function resolveAvailabilityFromState(
 
 export function resolveAvailabilityFromQuantity(
   locale: BuyerLocale,
-  availableQuantity: number
+  availableQuantity: number,
 ) {
   const dictionary = getBuyerDictionary(locale);
 
@@ -541,7 +583,7 @@ export function resolveAvailabilityFromQuantity(
 
 export function resolvePaymentMethodLabel(
   locale: BuyerLocale,
-  method: PaymentMethod
+  method: PaymentMethod,
 ) {
   if (locale === "km") {
     if (method === "COD") {
@@ -584,7 +626,7 @@ export function resolvePaymentMethodLabel(
 
 export function resolveOrderStateLabel(
   locale: BuyerLocale,
-  state: OrderLifecycleState
+  state: OrderLifecycleState,
 ) {
   const labels =
     locale === "km"
@@ -599,7 +641,7 @@ export function resolveOrderStateLabel(
           PAYMENT_CONFIRMED: "បានបញ្ជាក់ទូទាត់",
           PAYMENT_PENDING: "កំពុងរង់ចាំទូទាត់",
           REFUNDED: "បានសងប្រាក់វិញ",
-          SELLER_CONFIRMED: "អ្នកលក់បានបញ្ជាក់"
+          SELLER_CONFIRMED: "អ្នកលក់បានបញ្ជាក់",
         }
       : {
           CANCELLED: "Cancelled",
@@ -612,7 +654,7 @@ export function resolveOrderStateLabel(
           PAYMENT_CONFIRMED: "Payment confirmed",
           PAYMENT_PENDING: "Payment pending",
           REFUNDED: "Refunded",
-          SELLER_CONFIRMED: "Seller confirmed"
+          SELLER_CONFIRMED: "Seller confirmed",
         };
 
   return labels[state];
@@ -620,7 +662,7 @@ export function resolveOrderStateLabel(
 
 export function resolveShipmentStatusLabel(
   locale: BuyerLocale,
-  status: ShipmentStatus
+  status: ShipmentStatus,
 ) {
   const labels =
     locale === "km"
@@ -631,7 +673,7 @@ export function resolveShipmentStatusLabel(
           IN_TRANSIT: "កំពុងដឹកជញ្ជូន",
           LABEL_CREATED: "បានបង្កើតស្លាក",
           PENDING: "កំពុងរង់ចាំ",
-          RETURNED: "បានត្រឡប់"
+          RETURNED: "បានត្រឡប់",
         }
       : {
           DELIVERED: "Delivered",
@@ -640,7 +682,7 @@ export function resolveShipmentStatusLabel(
           IN_TRANSIT: "In transit",
           LABEL_CREATED: "Label created",
           PENDING: "Pending",
-          RETURNED: "Returned"
+          RETURNED: "Returned",
         };
 
   return labels[status];
@@ -656,7 +698,7 @@ export function resolvePaymentStatusLabel(
     | "SUCCEEDED"
     | "FAILED"
     | "CANCELLED"
-    | "EXPIRED"
+    | "EXPIRED",
 ) {
   const labels =
     locale === "km"
@@ -668,7 +710,7 @@ export function resolvePaymentStatusLabel(
           NOT_REQUIRED: "មិនចាំបាច់",
           PENDING: "កំពុងរង់ចាំ",
           PROCESSING: "កំពុងដំណើរការ",
-          SUCCEEDED: "ជោគជ័យ"
+          SUCCEEDED: "ជោគជ័យ",
         }
       : {
           AUTHORIZED: "Authorized",
@@ -678,7 +720,7 @@ export function resolvePaymentStatusLabel(
           NOT_REQUIRED: "Not required",
           PENDING: "Pending",
           PROCESSING: "Processing",
-          SUCCEEDED: "Succeeded"
+          SUCCEEDED: "Succeeded",
         };
 
   return labels[status];

@@ -15,7 +15,7 @@ import type {
   SellerCatalogData,
   SellerDashboardData,
   SellerShippingQueueData,
-  SellerVideoPostsData
+  SellerVideoPostsData,
 } from "./src/api/client";
 import {
   createSellerVideoPost,
@@ -38,7 +38,7 @@ import {
   saveSellerOnboarding,
   saveSellerShipment,
   submitCheckout,
-  verifyOtp
+  verifyOtp,
 } from "./src/api/client";
 import { AuthPanel } from "./src/components/AuthPanel";
 import { CartScreen } from "./src/components/CartScreen";
@@ -47,17 +47,18 @@ import { OrderTrackingScreen } from "./src/components/OrderTrackingScreen";
 import { PaymentResultScreen } from "./src/components/PaymentResultScreen";
 import { ProductDetailScreen } from "./src/components/ProductDetailScreen";
 import { SellerCatalogScreen } from "./src/components/SellerCatalogScreen";
+import { SellerCreatorScreen } from "./src/components/SellerCreatorScreen";
 import { SellerOverviewScreen } from "./src/components/SellerOverviewScreen";
 import {
   SellerPostsScreen,
-  type SellerVideoDraftState
+  type SellerVideoDraftState,
 } from "./src/components/SellerPostsScreen";
 import { SellerShippingScreen } from "./src/components/SellerShippingScreen";
 import { VideoFeedScreen } from "./src/components/VideoFeedScreen";
 import {
   getBuyerDictionary,
   readDefaultBuyerLocale,
-  type BuyerLocale
+  type BuyerLocale,
 } from "./src/lib/i18n";
 import {
   applyCheckoutToRecentOrders,
@@ -65,12 +66,12 @@ import {
   readRecentOrders,
   rememberCheckoutOrder,
   rememberTrackedOrder,
-  type BuyerRecentOrder
+  type BuyerRecentOrder,
 } from "./src/lib/orders";
 import {
   clearStoredSessionToken,
   readStoredSessionToken,
-  writeStoredSessionToken
+  writeStoredSessionToken,
 } from "./src/lib/session";
 import { palette } from "./src/lib/theme";
 import * as ImagePicker from "expo-image-picker";
@@ -84,16 +85,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View
+  View,
 } from "react-native";
-import {
-  SafeAreaProvider,
-  SafeAreaView
-} from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 type FeedState = BuyerVideoFeedResult;
 type ShellTab = "home" | "cart" | "orders" | "account";
-type SellerShellTab = "overview" | "catalog" | "posts" | "shipping";
+type SellerShellTab = "create" | "overview" | "catalog" | "posts" | "shipping";
 
 type SelectedUploadAsset = {
   aspectRatio: number | null;
@@ -105,7 +103,7 @@ type SelectedUploadAsset = {
 
 const emptyFeedState: FeedState = {
   items: [],
-  nextCursor: null
+  nextCursor: null,
 };
 
 const emptyCartState: BuyerCart = {
@@ -116,7 +114,7 @@ const emptyCartState: BuyerCart = {
   seller: null,
   subtotalMinor: 0,
   totalMinor: 0,
-  updatedAt: null
+  updatedAt: null,
 };
 
 const initialShippingAddress: CheckoutAddressInput = {
@@ -128,7 +126,7 @@ const initialShippingAddress: CheckoutAddressInput = {
   line2: "",
   phone: "",
   postalCode: "",
-  stateProvince: ""
+  stateProvince: "",
 };
 
 const initialSellerProfileDraft: SaveSellerOnboardingInput = {
@@ -142,18 +140,19 @@ const initialSellerProfileDraft: SaveSellerOnboardingInput = {
   payoutRoutingNumber: "",
   slug: "",
   supportEmail: "",
-  supportPhone: ""
+  supportPhone: "",
 };
 
 const initialSellerProductDraft: CreateSellerProductInput = {
   category: "",
   description: "",
   name: "",
-  returnPolicy: "Returns accepted within seven days if unused and in original condition.",
+  returnPolicy:
+    "Returns accepted within seven days if unused and in original condition.",
   sellerAddress: "",
   sellerContact: "",
   slug: "",
-  status: "DRAFT",
+  status: "ACTIVE",
   variants: [
     {
       currency: "KHR",
@@ -163,9 +162,9 @@ const initialSellerProductDraft: CreateSellerProductInput = {
       name: "Default",
       priceMinor: 0,
       reorderPoint: 0,
-      sku: ""
-    }
-  ]
+      sku: "",
+    },
+  ],
 };
 
 const initialSellerVideoDraft: SellerVideoDraftState & {
@@ -178,8 +177,20 @@ const initialSellerVideoDraft: SellerVideoDraftState & {
   productId: null,
   status: "DRAFT",
   videoAsset: null,
-  videoLabel: null
+  videoLabel: null,
 };
+
+function chooseDefaultSellerVideoProductId(catalog: SellerCatalogData) {
+  return (
+    catalog.products.find(
+      (product) =>
+        product.status === "ACTIVE" && product.moderationStatus === "APPROVED",
+    )?.id ??
+    catalog.products.find((product) => product.status === "ACTIVE")?.id ??
+    catalog.products[0]?.id ??
+    null
+  );
+}
 
 function resolveSessionLabel(session: AuthSession) {
   return session.user.email ?? session.user.phone ?? session.user.id;
@@ -205,16 +216,22 @@ export default function App() {
 
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
-  const [otpRequestState, setOtpRequestState] = useState<RequestOtpResponse | null>(null);
+  const [otpRequestState, setOtpRequestState] =
+    useState<RequestOtpResponse | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
   const [isSellerMode, setIsSellerMode] = useState(false);
-  const [sellerTab, setSellerTab] = useState<SellerShellTab>("overview");
-  const [sellerDashboard, setSellerDashboard] = useState<SellerDashboardData | null>(null);
-  const [sellerCatalog, setSellerCatalog] = useState<SellerCatalogData | null>(null);
-  const [sellerShipping, setSellerShipping] = useState<SellerShippingQueueData | null>(null);
-  const [sellerVideoPosts, setSellerVideoPosts] = useState<SellerVideoPostsData | null>(null);
+  const [sellerTab, setSellerTab] = useState<SellerShellTab>("create");
+  const [sellerDashboard, setSellerDashboard] =
+    useState<SellerDashboardData | null>(null);
+  const [sellerCatalog, setSellerCatalog] = useState<SellerCatalogData | null>(
+    null,
+  );
+  const [sellerShipping, setSellerShipping] =
+    useState<SellerShippingQueueData | null>(null);
+  const [sellerVideoPosts, setSellerVideoPosts] =
+    useState<SellerVideoPostsData | null>(null);
   const [isSellerLoading, setIsSellerLoading] = useState(false);
   const [sellerError, setSellerError] = useState<string | null>(null);
   const [sellerMessage, setSellerMessage] = useState<string | null>(null);
@@ -223,7 +240,9 @@ export default function App() {
     useState<SaveSellerOnboardingInput>(initialSellerProfileDraft);
   const [sellerProductDraft, setSellerProductDraft] =
     useState<CreateSellerProductInput>(initialSellerProductDraft);
-  const [sellerVideoDraft, setSellerVideoDraft] = useState(initialSellerVideoDraft);
+  const [sellerVideoDraft, setSellerVideoDraft] = useState(
+    initialSellerVideoDraft,
+  );
   const [sellerShipmentDrafts, setSellerShipmentDrafts] = useState<
     Record<string, SaveSellerShipmentInput>
   >({});
@@ -233,8 +252,11 @@ export default function App() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [feedError, setFeedError] = useState<string | null>(null);
 
-  const [selectedProductSlug, setSelectedProductSlug] = useState<string | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<BuyerProductDetail | null>(null);
+  const [selectedProductSlug, setSelectedProductSlug] = useState<string | null>(
+    null,
+  );
+  const [selectedProduct, setSelectedProduct] =
+    useState<BuyerProductDetail | null>(null);
   const [isProductLoading, setIsProductLoading] = useState(false);
   const [productError, setProductError] = useState<string | null>(null);
 
@@ -245,18 +267,23 @@ export default function App() {
   const [addingVariantId, setAddingVariantId] = useState<string | null>(null);
 
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
-  const [checkoutConfigError, setCheckoutConfigError] = useState<string | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+    useState<PaymentMethod | null>(null);
+  const [checkoutConfigError, setCheckoutConfigError] = useState<string | null>(
+    null,
+  );
   const [shippingAddress, setShippingAddress] = useState<CheckoutAddressInput>(
-    initialShippingAddress
+    initialShippingAddress,
   );
   const [checkoutNotes, setCheckoutNotes] = useState("");
   const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [checkoutResult, setCheckoutResult] = useState<BuyerCheckoutResult | null>(null);
+  const [checkoutResult, setCheckoutResult] =
+    useState<BuyerCheckoutResult | null>(null);
 
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
-  const [trackingData, setTrackingData] = useState<BuyerOrderTrackingData | null>(null);
+  const [trackingData, setTrackingData] =
+    useState<BuyerOrderTrackingData | null>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [isTrackingLoading, setIsTrackingLoading] = useState(false);
 
@@ -307,7 +334,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isSellerMode || !sessionToken || !session?.user.roles.includes("SELLER")) {
+    if (
+      !isSellerMode ||
+      !sessionToken ||
+      !session?.user.roles.includes("SELLER")
+    ) {
       return;
     }
 
@@ -322,7 +353,7 @@ export default function App() {
           readSellerDashboard(sessionToken),
           readSellerCatalog(sessionToken),
           readSellerShippingQueue(sessionToken),
-          readSellerVideoPosts(sessionToken)
+          readSellerVideoPosts(sessionToken),
         ]);
 
         if (!isActive) {
@@ -344,33 +375,33 @@ export default function App() {
           payoutRoutingNumber: dashboard.seller.payoutRoutingNumber,
           slug: dashboard.seller.slug,
           supportEmail: dashboard.seller.supportEmail,
-          supportPhone: dashboard.seller.supportPhone
+          supportPhone: dashboard.seller.supportPhone,
         });
         setSellerShipmentDrafts(
           Object.fromEntries(
             shipping.orders.map((order) => [
               order.orderId,
               {
-                carrier: order.shipment?.carrier ?? shipping.carriers[0] ?? "OTHER",
+                carrier:
+                  order.shipment?.carrier ?? shipping.carriers[0] ?? "OTHER",
                 message: "",
                 trackingNumber: order.shipment?.trackingNumber ?? "",
-                trackingUrl: order.shipment?.trackingUrl ?? ""
-              }
-            ])
-          )
+                trackingUrl: order.shipment?.trackingUrl ?? "",
+              },
+            ]),
+          ),
         );
         setSellerVideoDraft((current) => ({
           ...current,
           productId:
-            current.productId ??
-            catalog.products.find((product) => product.status === "ACTIVE")?.id ??
-            catalog.products[0]?.id ??
-            null
+            current.productId ?? chooseDefaultSellerVideoProductId(catalog),
         }));
       } catch (error) {
         if (isActive) {
           setSellerError(
-            error instanceof Error ? error.message : "Unable to load seller workspace."
+            error instanceof Error
+              ? error.message
+              : "Unable to load seller workspace.",
           );
         }
       } finally {
@@ -418,7 +449,9 @@ export default function App() {
       } catch (error) {
         if (isActive) {
           setCheckoutConfigError(
-            error instanceof Error ? error.message : "Unable to load payment methods."
+            error instanceof Error
+              ? error.message
+              : "Unable to load payment methods.",
           );
         }
       }
@@ -430,7 +463,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!selectedPaymentMethod || paymentMethods.includes(selectedPaymentMethod)) {
+    if (
+      !selectedPaymentMethod ||
+      paymentMethods.includes(selectedPaymentMethod)
+    ) {
       if (!selectedPaymentMethod && paymentMethods[0]) {
         setSelectedPaymentMethod(paymentMethods[0]);
       }
@@ -459,7 +495,9 @@ export default function App() {
         setFeedState(payload);
       } catch (error) {
         if (isActive) {
-          setFeedError(error instanceof Error ? error.message : dictionary.feedError);
+          setFeedError(
+            error instanceof Error ? error.message : dictionary.feedError,
+          );
         }
       } finally {
         if (isActive) {
@@ -498,7 +536,9 @@ export default function App() {
         setSelectedProduct(payload);
       } catch (error) {
         if (isActive) {
-          setProductError(error instanceof Error ? error.message : dictionary.detailFallback);
+          setProductError(
+            error instanceof Error ? error.message : dictionary.detailFallback,
+          );
         }
       } finally {
         if (isActive) {
@@ -533,7 +573,9 @@ export default function App() {
         }
       } catch (error) {
         if (isActive) {
-          setCartError(error instanceof Error ? error.message : "Unable to load cart.");
+          setCartError(
+            error instanceof Error ? error.message : "Unable to load cart.",
+          );
         }
       } finally {
         if (isActive) {
@@ -557,8 +599,8 @@ export default function App() {
         ? current
         : {
             ...current,
-            phone: session.user.phone ?? ""
-          }
+            phone: session.user.phone ?? "",
+          },
     );
   }, [session?.user.phone]);
 
@@ -576,7 +618,9 @@ export default function App() {
 
       setCart(payload);
     } catch (error) {
-      setCartError(error instanceof Error ? error.message : "Unable to load cart.");
+      setCartError(
+        error instanceof Error ? error.message : "Unable to load cart.",
+      );
     } finally {
       setIsCartLoading(false);
     }
@@ -595,7 +639,7 @@ export default function App() {
         readSellerDashboard(token),
         readSellerCatalog(token),
         readSellerShippingQueue(token),
-        readSellerVideoPosts(token)
+        readSellerVideoPosts(token),
       ]);
 
       setSellerDashboard(dashboard);
@@ -613,32 +657,32 @@ export default function App() {
         payoutRoutingNumber: dashboard.seller.payoutRoutingNumber,
         slug: dashboard.seller.slug,
         supportEmail: dashboard.seller.supportEmail,
-        supportPhone: dashboard.seller.supportPhone
+        supportPhone: dashboard.seller.supportPhone,
       });
       setSellerShipmentDrafts(
         Object.fromEntries(
           shipping.orders.map((order) => [
             order.orderId,
             {
-              carrier: order.shipment?.carrier ?? shipping.carriers[0] ?? "OTHER",
+              carrier:
+                order.shipment?.carrier ?? shipping.carriers[0] ?? "OTHER",
               message: "",
               trackingNumber: order.shipment?.trackingNumber ?? "",
-              trackingUrl: order.shipment?.trackingUrl ?? ""
-            }
-          ])
-        )
+              trackingUrl: order.shipment?.trackingUrl ?? "",
+            },
+          ]),
+        ),
       );
       setSellerVideoDraft((current) => ({
         ...current,
         productId:
-          current.productId ??
-          catalog.products.find((product) => product.status === "ACTIVE")?.id ??
-          catalog.products[0]?.id ??
-          null
+          current.productId ?? chooseDefaultSellerVideoProductId(catalog),
       }));
     } catch (error) {
       setSellerError(
-        error instanceof Error ? error.message : "Unable to refresh seller workspace."
+        error instanceof Error
+          ? error.message
+          : "Unable to refresh seller workspace.",
       );
     } finally {
       setIsSellerLoading(false);
@@ -667,7 +711,9 @@ export default function App() {
       setTrackingData(payload);
     } catch (error) {
       setTrackingError(
-        error instanceof Error ? error.message : "Unable to load order tracking."
+        error instanceof Error
+          ? error.message
+          : "Unable to load order tracking.",
       );
     } finally {
       setIsTrackingLoading(false);
@@ -694,7 +740,9 @@ export default function App() {
       setCode("");
       setAuthMessage(`OTP sent to ${payload.identifier}.`);
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Unable to request OTP.");
+      setAuthError(
+        error instanceof Error ? error.message : "Unable to request OTP.",
+      );
     } finally {
       setIsSubmittingAuth(false);
     }
@@ -729,7 +777,9 @@ export default function App() {
       setCode("");
       setAuthMessage(`Signed in as ${resolveSessionLabel(payload.session)}.`);
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Unable to verify OTP.");
+      setAuthError(
+        error instanceof Error ? error.message : "Unable to verify OTP.",
+      );
     } finally {
       setIsSubmittingAuth(false);
     }
@@ -753,7 +803,7 @@ export default function App() {
     setTrackingData(null);
     setTrackingError(null);
     setIsSellerMode(false);
-    setSellerTab("overview");
+    setSellerTab("create");
     setSellerDashboard(null);
     setSellerCatalog(null);
     setSellerShipping(null);
@@ -765,17 +815,17 @@ export default function App() {
 
   function handleChangeSellerProfileField(
     field: keyof SaveSellerOnboardingInput,
-    value: string
+    value: string,
   ) {
     setSellerProfileDraft((current) => ({
       ...current,
-      [field]: value
+      [field]: value,
     }));
   }
 
   function handleChangeSellerProductDraft(
     field: keyof CreateSellerProductInput | "inventoryQuantity" | "priceMinor",
-    value: string
+    value: string,
   ) {
     if (field === "inventoryQuantity" || field === "priceMinor") {
       setSellerProductDraft((current) => ({
@@ -785,30 +835,34 @@ export default function App() {
             ...(current.variants?.[0] ?? {}),
             inventoryQuantity:
               field === "inventoryQuantity"
-                ? (Number.parseInt(value || "0", 10) || 0)
-                : current.variants?.[0]?.inventoryQuantity ?? 0,
+                ? Number.parseInt(value || "0", 10) || 0
+                : (current.variants?.[0]?.inventoryQuantity ?? 0),
             priceMinor:
               field === "priceMinor"
-                ? (Number.parseInt(value || "0", 10) || 0)
-                : current.variants?.[0]?.priceMinor ?? 0
-          }
-        ]
+                ? Number.parseInt(value || "0", 10) || 0
+                : (current.variants?.[0]?.priceMinor ?? 0),
+          },
+        ],
       }));
       return;
     }
 
     setSellerProductDraft((current) => ({
       ...current,
-      [field]: value
+      [field]: value,
     }));
   }
 
   function createSelectedUploadAsset(
-    asset: ImagePicker.ImagePickerAsset
+    asset: ImagePicker.ImagePickerAsset,
   ): SelectedUploadAsset {
     const fallbackName = asset.uri.split("/").at(-1) ?? `upload-${Date.now()}`;
-    const width = typeof asset.width === "number" && asset.width > 0 ? asset.width : null;
-    const height = typeof asset.height === "number" && asset.height > 0 ? asset.height : null;
+    const width =
+      typeof asset.width === "number" && asset.width > 0 ? asset.width : null;
+    const height =
+      typeof asset.height === "number" && asset.height > 0
+        ? asset.height
+        : null;
 
     return {
       aspectRatio: width && height ? width / height : null,
@@ -818,7 +872,7 @@ export default function App() {
           : null,
       fileName: asset.fileName ?? fallbackName,
       mimeType: asset.mimeType ?? "application/octet-stream",
-      uri: asset.uri
+      uri: asset.uri,
     };
   }
 
@@ -832,7 +886,7 @@ export default function App() {
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: false,
       mediaTypes: mediaType,
-      quality: 1
+      quality: 1,
     });
 
     if (result.canceled || !result.assets[0]) {
@@ -845,21 +899,21 @@ export default function App() {
   async function uploadSelectedAsset(
     token: string,
     asset: SelectedUploadAsset,
-    fileRole: "POSTER" | "VIDEO"
+    fileRole: "POSTER" | "VIDEO",
   ) {
     const uploadRequest = await requestSellerVideoPostUpload(token, {
       contentType: asset.mimeType,
       fileName: asset.fileName,
-      fileRole
+      fileRole,
     });
     const localResponse = await fetch(asset.uri);
     const blob = await localResponse.blob();
     const uploadResponse = await fetch(uploadRequest.uploadUrl, {
       body: blob,
       headers: {
-        "Content-Type": asset.mimeType
+        "Content-Type": asset.mimeType,
       },
-      method: "PUT"
+      method: "PUT",
     });
 
     if (!uploadResponse.ok) {
@@ -880,12 +934,14 @@ export default function App() {
       setSellerVideoDraft((current) => ({
         ...current,
         videoAsset: asset,
-        videoLabel: asset.fileName
+        videoLabel: asset.fileName,
       }));
       setSellerMessage("Video selected for the next post.");
       setSellerError(null);
     } catch (error) {
-      setSellerError(error instanceof Error ? error.message : "Unable to pick a video.");
+      setSellerError(
+        error instanceof Error ? error.message : "Unable to pick a video.",
+      );
     }
   }
 
@@ -900,40 +956,42 @@ export default function App() {
       setSellerVideoDraft((current) => ({
         ...current,
         posterAsset: asset,
-        posterLabel: asset.fileName
+        posterLabel: asset.fileName,
       }));
       setSellerMessage("Poster selected for the next post.");
       setSellerError(null);
     } catch (error) {
-      setSellerError(error instanceof Error ? error.message : "Unable to pick a poster.");
+      setSellerError(
+        error instanceof Error ? error.message : "Unable to pick a poster.",
+      );
     }
   }
 
   function handleChangeSellerVideoCaption(value: string) {
     setSellerVideoDraft((current) => ({
       ...current,
-      caption: value
+      caption: value,
     }));
   }
 
   function handleSelectSellerVideoProduct(productId: string) {
     setSellerVideoDraft((current) => ({
       ...current,
-      productId
+      productId,
     }));
   }
 
   function handleChangeSellerShipmentDraft(
     orderId: string,
     field: keyof SaveSellerShipmentInput,
-    value: string
+    value: string,
   ) {
     setSellerShipmentDrafts((current) => ({
       ...current,
       [orderId]: {
         ...current[orderId],
-        [field]: value
-      }
+        [field]: value,
+      },
     }));
   }
 
@@ -949,15 +1007,19 @@ export default function App() {
     try {
       await saveSellerOnboarding(sessionToken, {
         ...sellerProfileDraft,
-        submitForReview
+        submitForReview,
       });
       await refreshSellerWorkspace(sessionToken);
       setSellerMessage(
-        submitForReview ? "Seller profile submitted for review." : "Seller profile saved."
+        submitForReview
+          ? "Seller profile submitted for review."
+          : "Seller profile saved.",
       );
     } catch (error) {
       setSellerError(
-        error instanceof Error ? error.message : "Unable to save seller profile."
+        error instanceof Error
+          ? error.message
+          : "Unable to save seller profile.",
       );
     } finally {
       setIsSellerSaving(false);
@@ -974,13 +1036,24 @@ export default function App() {
     setSellerMessage(null);
 
     try {
-      await createSellerProduct(sessionToken, sellerProductDraft);
+      const createdProduct = await createSellerProduct(
+        sessionToken,
+        sellerProductDraft,
+      );
       await refreshSellerWorkspace(sessionToken);
+      setSellerVideoDraft((current) => ({
+        ...current,
+        productId: createdProduct.id,
+      }));
       setSellerProductDraft(initialSellerProductDraft);
-      setSellerMessage("Seller listing created.");
+      setSellerMessage(
+        "Seller listing created and attached to the next shoppable post.",
+      );
     } catch (error) {
       setSellerError(
-        error instanceof Error ? error.message : "Unable to create seller listing."
+        error instanceof Error
+          ? error.message
+          : "Unable to create seller listing.",
       );
     } finally {
       setIsSellerSaving(false);
@@ -988,7 +1061,7 @@ export default function App() {
   }
 
   async function handleCreateSellerVideoPost(
-    status: CreateSellerVideoPostInput["status"]
+    status: CreateSellerVideoPostInput["status"],
   ) {
     if (!sessionToken) {
       return;
@@ -1017,8 +1090,12 @@ export default function App() {
       const [videoKey, posterKey] = await Promise.all([
         uploadSelectedAsset(sessionToken, sellerVideoDraft.videoAsset, "VIDEO"),
         sellerVideoDraft.posterAsset
-          ? uploadSelectedAsset(sessionToken, sellerVideoDraft.posterAsset, "POSTER")
-          : Promise.resolve(null)
+          ? uploadSelectedAsset(
+              sessionToken,
+              sellerVideoDraft.posterAsset,
+              "POSTER",
+            )
+          : Promise.resolve(null),
       ]);
 
       await createSellerVideoPost(sessionToken, {
@@ -1028,23 +1105,37 @@ export default function App() {
         posterKey,
         productId: sellerVideoDraft.productId,
         status,
-        videoKey
+        videoKey,
       });
       await refreshSellerWorkspace(sessionToken);
+      if (status === "PUBLISHED") {
+        const nextFeed = await listVideoFeed();
+
+        setFeedState(nextFeed);
+        setFeedError(null);
+        setIsFeedLoading(false);
+        setSelectedProductSlug(null);
+        setIsSellerMode(false);
+        setActiveTab("home");
+      }
       setSellerVideoDraft((current) => ({
         ...initialSellerVideoDraft,
         productId:
           current.productId ??
-          sellerCatalog?.products.find((product) => product.status === "ACTIVE")?.id ??
-          sellerCatalog?.products[0]?.id ??
-          null
+          (sellerCatalog
+            ? chooseDefaultSellerVideoProductId(sellerCatalog)
+            : null),
       }));
       setSellerMessage(
-        status === "PUBLISHED" ? "Video post published." : "Video post saved as draft."
+        status === "PUBLISHED"
+          ? "Video post published."
+          : "Video post saved as draft.",
       );
     } catch (error) {
       setSellerError(
-        error instanceof Error ? error.message : "Unable to create seller video post."
+        error instanceof Error
+          ? error.message
+          : "Unable to create seller video post.",
       );
     } finally {
       setIsSellerSaving(false);
@@ -1053,7 +1144,7 @@ export default function App() {
 
   async function handleSaveSellerShipment(
     orderId: string,
-    status?: "HANDED_TO_CARRIER" | "IN_TRANSIT" | "DELIVERED"
+    status?: "HANDED_TO_CARRIER" | "IN_TRANSIT" | "DELIVERED",
   ) {
     if (!sessionToken) {
       return;
@@ -1066,13 +1157,15 @@ export default function App() {
     try {
       await saveSellerShipment(sessionToken, orderId, {
         ...sellerShipmentDrafts[orderId],
-        status
+        status,
       });
       await refreshSellerWorkspace(sessionToken);
       setSellerMessage("Shipment update saved.");
     } catch (error) {
       setSellerError(
-        error instanceof Error ? error.message : "Unable to save shipment update."
+        error instanceof Error
+          ? error.message
+          : "Unable to save shipment update.",
       );
     } finally {
       setIsSellerSaving(false);
@@ -1089,15 +1182,17 @@ export default function App() {
 
     try {
       const payload = await listVideoFeed({
-        cursor: feedState.nextCursor
+        cursor: feedState.nextCursor,
       });
 
       setFeedState((current) => ({
         items: [...current.items, ...payload.items],
-        nextCursor: payload.nextCursor
+        nextCursor: payload.nextCursor,
       }));
     } catch (error) {
-      setFeedError(error instanceof Error ? error.message : dictionary.feedError);
+      setFeedError(
+        error instanceof Error ? error.message : dictionary.feedError,
+      );
     } finally {
       setIsLoadingMore(false);
     }
@@ -1146,7 +1241,7 @@ export default function App() {
       const payload = await mutateCartItem(sessionToken, {
         action: "ADD",
         quantity: 1,
-        variantId
+        variantId,
       });
 
       setCart(payload);
@@ -1173,12 +1268,14 @@ export default function App() {
       const payload = await mutateCartItem(sessionToken, {
         action: "REMOVE",
         quantity: 1,
-        variantId
+        variantId,
       });
 
       setCart(payload);
     } catch (error) {
-      setCartError(error instanceof Error ? error.message : "Unable to update cart.");
+      setCartError(
+        error instanceof Error ? error.message : "Unable to update cart.",
+      );
     } finally {
       setIsCartMutating(false);
     }
@@ -1196,12 +1293,14 @@ export default function App() {
       const payload = await mutateCartItem(sessionToken, {
         action: "ADD",
         quantity: 1,
-        variantId
+        variantId,
       });
 
       setCart(payload);
     } catch (error) {
-      setCartError(error instanceof Error ? error.message : "Unable to update cart.");
+      setCartError(
+        error instanceof Error ? error.message : "Unable to update cart.",
+      );
     } finally {
       setIsCartMutating(false);
     }
@@ -1218,12 +1317,14 @@ export default function App() {
     try {
       const payload = await mutateCartItem(sessionToken, {
         action: "REMOVE",
-        variantId
+        variantId,
       });
 
       setCart(payload);
     } catch (error) {
-      setCartError(error instanceof Error ? error.message : "Unable to update cart.");
+      setCartError(
+        error instanceof Error ? error.message : "Unable to update cart.",
+      );
     } finally {
       setIsCartMutating(false);
     }
@@ -1255,9 +1356,9 @@ export default function App() {
           billingAddress: shippingAddress,
           notes: checkoutNotes.trim() || null,
           paymentMethod: selectedPaymentMethod,
-          shippingAddress
+          shippingAddress,
         },
-        createIdempotencyKey()
+        createIdempotencyKey(),
       );
 
       setCheckoutResult(payload);
@@ -1273,7 +1374,9 @@ export default function App() {
       setTrackingError(null);
       await refreshCart(sessionToken);
     } catch (error) {
-      setCheckoutError(error instanceof Error ? error.message : "Unable to place order.");
+      setCheckoutError(
+        error instanceof Error ? error.message : "Unable to place order.",
+      );
     } finally {
       setIsSubmittingCheckout(false);
     }
@@ -1298,7 +1401,7 @@ export default function App() {
     } catch (error) {
       Alert.alert(
         "KhmerCart",
-        error instanceof Error ? error.message : "Unable to open payment link."
+        error instanceof Error ? error.message : "Unable to open payment link.",
       );
     }
   }
@@ -1348,7 +1451,9 @@ export default function App() {
     } catch (error) {
       Alert.alert(
         "KhmerCart",
-        error instanceof Error ? error.message : "Unable to open tracking link."
+        error instanceof Error
+          ? error.message
+          : "Unable to open tracking link.",
       );
     }
   }
@@ -1385,13 +1490,13 @@ export default function App() {
         onPress={() => setLocale(nextLocale)}
         style={[
           styles.localeChip,
-          isSelected ? styles.localeChipSelected : null
+          isSelected ? styles.localeChipSelected : null,
         ]}
       >
         <Text
           style={[
             styles.localeChipText,
-            isSelected ? styles.localeChipTextSelected : null
+            isSelected ? styles.localeChipTextSelected : null,
           ]}
         >
           {nextLocale.toUpperCase()}
@@ -1427,7 +1532,9 @@ export default function App() {
 
             <View style={styles.localePanel}>
               <Text style={styles.localeLabel}>{dictionary.localeLabel}</Text>
-              <View style={styles.localeRow}>{(["en", "km"] as const).map(renderLocaleChip)}</View>
+              <View style={styles.localeRow}>
+                {(["en", "km"] as const).map(renderLocaleChip)}
+              </View>
             </View>
           </View>
 
@@ -1457,13 +1564,19 @@ export default function App() {
 
               {session?.user.roles.includes("SELLER") ? (
                 <View style={styles.workspaceCard}>
-                  <Text style={styles.sectionEyebrow}>{dictionary.sellerCenter}</Text>
-                  <Text style={styles.workspaceTitle}>{dictionary.sellerSwitchWorkspace}</Text>
-                  <Text style={styles.workspaceBody}>{dictionary.sellerOverviewBody}</Text>
+                  <Text style={styles.sectionEyebrow}>
+                    {dictionary.sellerCenter}
+                  </Text>
+                  <Text style={styles.workspaceTitle}>
+                    {dictionary.sellerSwitchWorkspace}
+                  </Text>
+                  <Text style={styles.workspaceBody}>
+                    {dictionary.sellerOverviewBody}
+                  </Text>
                   <Pressable
                     onPress={() => {
                       setIsSellerMode(true);
-                      setSellerTab("overview");
+                      setSellerTab("create");
                     }}
                     style={styles.summaryPrimaryButton}
                   >
@@ -1474,8 +1587,12 @@ export default function App() {
                 </View>
               ) : session ? (
                 <View style={styles.workspaceCard}>
-                  <Text style={styles.sectionEyebrow}>{dictionary.sellerCenter}</Text>
-                  <Text style={styles.workspaceBody}>{dictionary.sellerWorkspaceLocked}</Text>
+                  <Text style={styles.sectionEyebrow}>
+                    {dictionary.sellerCenter}
+                  </Text>
+                  <Text style={styles.workspaceBody}>
+                    {dictionary.sellerWorkspaceLocked}
+                  </Text>
                 </View>
               ) : null}
             </View>
@@ -1494,7 +1611,12 @@ export default function App() {
         onPress={() => setSellerTab(tab)}
         style={[styles.tabButton, isSelected ? styles.tabButtonSelected : null]}
       >
-        <Text style={[styles.tabButtonText, isSelected ? styles.tabButtonTextSelected : null]}>
+        <Text
+          style={[
+            styles.tabButtonText,
+            isSelected ? styles.tabButtonTextSelected : null,
+          ]}
+        >
           {label}
         </Text>
       </Pressable>
@@ -1502,6 +1624,33 @@ export default function App() {
   }
 
   function renderSellerShellContent() {
+    if (sellerTab === "create") {
+      return (
+        <SellerCreatorScreen
+          catalog={sellerCatalog}
+          dashboard={sellerDashboard}
+          errorMessage={sellerError}
+          isLoading={isSellerLoading}
+          isSaving={isSellerSaving}
+          locale={locale}
+          message={sellerMessage}
+          posts={sellerVideoPosts}
+          productDraft={sellerProductDraft}
+          videoDraft={sellerVideoDraft}
+          onChangeCaption={handleChangeSellerVideoCaption}
+          onChangeProductDraft={handleChangeSellerProductDraft}
+          onCreateProduct={handleCreateSellerListing}
+          onOpenCatalog={() => setSellerTab("catalog")}
+          onOpenPosts={() => setSellerTab("posts")}
+          onPickPoster={() => void handlePickSellerPoster()}
+          onPickVideo={() => void handlePickSellerVideo()}
+          onPublish={() => void handleCreateSellerVideoPost("PUBLISHED")}
+          onSaveDraft={() => void handleCreateSellerVideoPost("DRAFT")}
+          onSelectProduct={handleSelectSellerVideoProduct}
+        />
+      );
+    }
+
     if (sellerTab === "catalog") {
       return (
         <SellerCatalogScreen
@@ -1580,7 +1729,12 @@ export default function App() {
         onPress={() => handleSelectTab(tab)}
         style={[styles.tabButton, isSelected ? styles.tabButtonSelected : null]}
       >
-        <Text style={[styles.tabButtonText, isSelected ? styles.tabButtonTextSelected : null]}>
+        <Text
+          style={[
+            styles.tabButtonText,
+            isSelected ? styles.tabButtonTextSelected : null,
+          ]}
+        >
           {label}
         </Text>
       </Pressable>
@@ -1605,7 +1759,7 @@ export default function App() {
           onChangeAddressField={(field, value) =>
             setShippingAddress((current) => ({
               ...current,
-              [field]: value
+              [field]: value,
             }))
           }
           onChangeNotes={setCheckoutNotes}
@@ -1678,9 +1832,9 @@ export default function App() {
           <View style={styles.shell}>
             <View style={styles.shellBody}>{renderSellerShellContent()}</View>
             <View style={styles.tabBar}>
+              {renderSellerTabButton("create", dictionary.sellerCreateTab)}
               {renderSellerTabButton("overview", dictionary.sellerOverviewTab)}
               {renderSellerTabButton("catalog", dictionary.sellerCatalogTab)}
-              {renderSellerTabButton("posts", dictionary.sellerPostsTab)}
               {renderSellerTabButton("shipping", dictionary.sellerShippingTab)}
               <Pressable
                 onPress={() => setIsSellerMode(false)}
@@ -1711,25 +1865,25 @@ const styles = StyleSheet.create({
     color: palette.ink,
     fontSize: 32,
     fontWeight: "700",
-    lineHeight: 38
+    lineHeight: 38,
   },
   accountStack: {
-    gap: 16
+    gap: 16,
   },
   buttonPressed: {
-    opacity: 0.9
+    opacity: 0.9,
   },
   cartPill: {
     alignSelf: "flex-start",
     backgroundColor: palette.accentMuted,
     borderRadius: 999,
     paddingHorizontal: 14,
-    paddingVertical: 10
+    paddingVertical: 10,
   },
   cartPillText: {
     color: palette.accent,
     fontSize: 12,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   categoryChip: {
     backgroundColor: palette.card,
@@ -1737,37 +1891,37 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 16,
-    paddingVertical: 10
+    paddingVertical: 10,
   },
   categoryChipSelected: {
-    backgroundColor: palette.accent
+    backgroundColor: palette.accent,
   },
   categoryChipText: {
     color: palette.ink,
     fontSize: 14,
-    fontWeight: "600"
+    fontWeight: "600",
   },
   categoryChipTextSelected: {
-    color: palette.card
+    color: palette.card,
   },
   categoryRow: {
     gap: 10,
-    paddingHorizontal: 20
+    paddingHorizontal: 20,
   },
   content: {
     gap: 18,
-    paddingBottom: 48
+    paddingBottom: 48,
   },
   emptyState: {
     color: palette.muted,
     fontSize: 15,
-    paddingHorizontal: 20
+    paddingHorizontal: 20,
   },
   errorBanner: {
     color: palette.danger,
     fontSize: 14,
     lineHeight: 20,
-    paddingHorizontal: 20
+    paddingHorizontal: 20,
   },
   heroPanel: {
     backgroundColor: palette.card,
@@ -1775,39 +1929,39 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     borderWidth: 1,
     gap: 18,
-    padding: 22
+    padding: 22,
   },
   hero: {
     backgroundColor: palette.background,
     gap: 18,
     paddingBottom: 4,
     paddingHorizontal: 20,
-    paddingTop: 18
+    paddingTop: 18,
   },
   heroBody: {
     color: palette.muted,
     fontSize: 15,
-    lineHeight: 23
+    lineHeight: 23,
   },
   heroCopy: {
     flex: 1,
-    gap: 10
+    gap: 10,
   },
   heroEyebrow: {
     color: palette.sun,
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.5,
-    textTransform: "uppercase"
+    textTransform: "uppercase",
   },
   heroHeader: {
-    gap: 18
+    gap: 18,
   },
   heroTitle: {
     color: palette.ink,
     fontSize: 36,
     fontWeight: "700",
-    lineHeight: 40
+    lineHeight: 40,
   },
   loadMoreButton: {
     alignItems: "center",
@@ -1818,22 +1972,22 @@ const styles = StyleSheet.create({
     marginTop: 4,
     minHeight: 54,
     minWidth: 170,
-    paddingHorizontal: 20
+    paddingHorizontal: 20,
   },
   loadMoreText: {
     color: palette.card,
     fontSize: 15,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   loadingState: {
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 20,
-    paddingVertical: 12
+    paddingVertical: 12,
   },
   loadingText: {
     color: palette.muted,
-    fontSize: 14
+    fontSize: 14,
   },
   localeChip: {
     backgroundColor: palette.card,
@@ -1841,40 +1995,40 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 12,
-    paddingVertical: 8
+    paddingVertical: 8,
   },
   localeChipSelected: {
-    backgroundColor: palette.sun
+    backgroundColor: palette.sun,
   },
   localeChipText: {
     color: palette.ink,
     fontSize: 12,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   localeChipTextSelected: {
-    color: palette.card
+    color: palette.card,
   },
   localeLabel: {
     color: palette.sun,
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.4,
-    textTransform: "uppercase"
+    textTransform: "uppercase",
   },
   localePanel: {
     alignSelf: "flex-start",
     backgroundColor: palette.sunMuted,
     borderRadius: 24,
     gap: 10,
-    padding: 14
+    padding: 14,
   },
   localeRow: {
     flexDirection: "row",
-    gap: 8
+    gap: 8,
   },
   productList: {
     gap: 16,
-    paddingHorizontal: 20
+    paddingHorizontal: 20,
   },
   quickStatCard: {
     backgroundColor: palette.sunMuted,
@@ -1882,26 +2036,26 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 6,
     paddingHorizontal: 16,
-    paddingVertical: 14
+    paddingVertical: 14,
   },
   quickStatLabel: {
     color: palette.sun,
     fontSize: 12,
     fontWeight: "700",
-    textTransform: "uppercase"
+    textTransform: "uppercase",
   },
   quickStatValue: {
     color: palette.ink,
     fontSize: 24,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   quickStatsRow: {
     flexDirection: "row",
-    gap: 12
+    gap: 12,
   },
   restoreCopy: {
     flex: 1,
-    gap: 4
+    gap: 4,
   },
   restoreCard: {
     alignItems: "center",
@@ -1912,53 +2066,53 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     paddingHorizontal: 18,
-    paddingVertical: 16
+    paddingVertical: 16,
   },
   restoreText: {
     color: palette.muted,
-    fontSize: 14
+    fontSize: 14,
   },
   restoreTitle: {
     color: palette.ink,
     fontSize: 15,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   safeArea: {
     backgroundColor: palette.background,
-    flex: 1
+    flex: 1,
   },
   shell: {
-    flex: 1
+    flex: 1,
   },
   shellBody: {
-    flex: 1
+    flex: 1,
   },
   sectionActions: {
     alignItems: "flex-end",
-    gap: 8
+    gap: 8,
   },
   sectionEyebrow: {
     color: palette.sun,
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.4,
-    textTransform: "uppercase"
+    textTransform: "uppercase",
   },
   sectionHeader: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 20
+    paddingHorizontal: 20,
   },
   sectionTitle: {
     color: palette.ink,
     fontSize: 24,
     fontWeight: "700",
-    marginTop: 4
+    marginTop: 4,
   },
   sessionSummaryActions: {
     flexDirection: "row",
-    gap: 10
+    gap: 10,
   },
   sessionSummaryCard: {
     backgroundColor: palette.card,
@@ -1966,37 +2120,37 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     borderWidth: 1,
     gap: 14,
-    padding: 18
+    padding: 18,
   },
   sessionSummaryCopy: {
-    gap: 6
+    gap: 6,
   },
   sessionSummaryValue: {
     color: palette.ink,
     fontSize: 18,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   sessionPill: {
     backgroundColor: palette.accentMuted,
     borderRadius: 999,
     paddingHorizontal: 14,
-    paddingVertical: 10
+    paddingVertical: 10,
   },
   sessionPillText: {
     color: palette.accent,
     fontSize: 12,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   storefrontNoteCard: {
     backgroundColor: palette.accent,
     borderRadius: 28,
     paddingHorizontal: 18,
-    paddingVertical: 16
+    paddingVertical: 16,
   },
   storefrontNoteText: {
     color: palette.card,
     fontSize: 15,
-    lineHeight: 23
+    lineHeight: 23,
   },
   summaryGhostButton: {
     alignItems: "center",
@@ -2004,12 +2158,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     justifyContent: "center",
     minHeight: 44,
-    paddingHorizontal: 16
+    paddingHorizontal: 16,
   },
   summaryGhostButtonText: {
     color: palette.accent,
     fontSize: 13,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   summaryPrimaryButton: {
     alignItems: "center",
@@ -2017,12 +2171,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     justifyContent: "center",
     minHeight: 44,
-    paddingHorizontal: 16
+    paddingHorizontal: 16,
   },
   summaryPrimaryButtonText: {
     color: palette.card,
     fontSize: 13,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   tabBar: {
     backgroundColor: palette.card,
@@ -2032,7 +2186,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingBottom: 14,
     paddingHorizontal: 16,
-    paddingTop: 12
+    paddingTop: 12,
   },
   tabButton: {
     alignItems: "center",
@@ -2040,23 +2194,23 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     minHeight: 46,
-    paddingHorizontal: 8
+    paddingHorizontal: 8,
   },
   tabButtonSelected: {
-    backgroundColor: palette.accent
+    backgroundColor: palette.accent,
   },
   tabButtonText: {
     color: palette.muted,
     fontSize: 12,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   tabButtonTextSelected: {
-    color: palette.card
+    color: palette.card,
   },
   workspaceBody: {
     color: palette.muted,
     fontSize: 14,
-    lineHeight: 21
+    lineHeight: 21,
   },
   workspaceCard: {
     backgroundColor: palette.card,
@@ -2064,11 +2218,11 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     gap: 10,
-    padding: 18
+    padding: 18,
   },
   workspaceTitle: {
     color: palette.ink,
     fontSize: 18,
-    fontWeight: "700"
-  }
+    fontWeight: "700",
+  },
 });
