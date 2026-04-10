@@ -6,8 +6,6 @@ import {
   resolveAvailabilityFromState
 } from "../lib/i18n";
 import { palette } from "../lib/theme";
-import { VideoView, useVideoPlayer } from "expo-video";
-import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -16,8 +14,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  View,
-  type ViewToken
+  View
 } from "react-native";
 
 type VideoFeedScreenProps = {
@@ -31,53 +28,25 @@ type VideoFeedScreenProps = {
 };
 
 type VideoFeedCardProps = {
-  active: boolean;
   item: BuyerVideoFeedItem;
   locale: BuyerLocale;
   onOpenProduct: () => void;
 };
 
-type PlayableVideoProps = {
-  active: boolean;
-  url: string;
-};
-
 const windowHeight = Dimensions.get("window").height;
 const cardHeight = Math.max(560, windowHeight - 170);
 
-function PlayableVideo({ active, url }: PlayableVideoProps) {
-  const player = useVideoPlayer(url, (instance) => {
-    instance.loop = true;
-    instance.muted = true;
-  });
-
-  useEffect(() => {
-    if (active) {
-      player.play();
-      return;
-    }
-
-    player.pause();
-  }, [active, player]);
-
-  return (
-    <VideoView
-      allowsFullscreen
-      nativeControls={false}
-      player={player}
-      style={styles.video}
-    />
-  );
-}
-
 function VideoFeedCard({
-  active,
   item,
   locale,
   onOpenProduct
 }: VideoFeedCardProps) {
   const dictionary = getBuyerDictionary(locale);
-  const hasPlayableVideo = Boolean(item.video.url);
+  const priceLabel = formatMoney(
+    locale,
+    item.product.pricing.currency,
+    item.product.pricing.priceMinor
+  );
 
   return (
     <View style={styles.card}>
@@ -90,29 +59,59 @@ function VideoFeedCard({
             style={styles.poster}
           />
         ) : null}
-
-        {hasPlayableVideo && item.video.url ? (
-          <PlayableVideo active={active} url={item.video.url} />
-        ) : null}
+        <View style={styles.posterWash} />
 
         <View style={styles.overlay}>
           <View style={styles.overlayHeader}>
-            <Text style={styles.overlaySeller}>{item.seller.displayName}</Text>
-            <Text style={styles.overlayMeta}>{dictionary.featuredNow}</Text>
+            <View style={styles.liveChip}>
+              <Text style={styles.liveChipText}>LIVE DROP</Text>
+            </View>
+            <View style={styles.creatorBadge}>
+              <Text style={styles.overlaySeller}>@{item.seller.slug}</Text>
+              <Text style={styles.overlayMeta}>{dictionary.featuredNow}</Text>
+            </View>
           </View>
 
           <View style={styles.overlayFooter}>
-            <View style={styles.captionBlock}>
-              <Text style={styles.caption}>{item.caption}</Text>
-              <Text style={styles.productName}>{item.product.name}</Text>
-              <Text style={styles.productMeta}>
-                {formatMoney(
-                  locale,
-                  item.product.pricing.currency,
-                  item.product.pricing.priceMinor
-                )}{" "}
-                · {resolveAvailabilityFromState(locale, item.product.stock.state)}
-              </Text>
+            <View style={styles.bottomRow}>
+              <View style={styles.leftColumn}>
+                <View style={styles.captionBlock}>
+                  <Text style={styles.caption}>{item.caption}</Text>
+                  <Text style={styles.productName}>{item.product.name}</Text>
+                  <Text style={styles.productMeta}>
+                    {priceLabel} ·{" "}
+                    {resolveAvailabilityFromState(locale, item.product.stock.state)}
+                  </Text>
+                </View>
+
+                <View style={styles.productChip}>
+                  <View style={styles.productChipThumb}>
+                    <Text style={styles.productChipThumbText}>KC</Text>
+                  </View>
+                  <View style={styles.productChipBody}>
+                    <Text style={styles.productChipLabel}>Featured product</Text>
+                    <Text numberOfLines={1} style={styles.productChipTitle}>
+                      {item.product.name}
+                    </Text>
+                  </View>
+                  <Text style={styles.productChipPrice}>{priceLabel}</Text>
+                </View>
+              </View>
+
+              <View style={styles.actionRail}>
+                <View style={styles.actionBubble}>
+                  <Text style={styles.actionEmoji}>♡</Text>
+                  <Text style={styles.actionLabel}>Save</Text>
+                </View>
+                <View style={styles.actionBubble}>
+                  <Text style={styles.actionEmoji}>↗</Text>
+                  <Text style={styles.actionLabel}>Share</Text>
+                </View>
+                <View style={styles.actionBubble}>
+                  <Text style={styles.actionEmoji}>▣</Text>
+                  <Text style={styles.actionLabel}>Shop</Text>
+                </View>
+              </View>
             </View>
 
             <Pressable
@@ -122,7 +121,13 @@ function VideoFeedCard({
                 pressed ? styles.buttonPressed : null
               ]}
             >
-              <Text style={styles.buyButtonText}>{dictionary.videoFeedBuyNow}</Text>
+              <View>
+                <Text style={styles.buyButtonEyebrow}>Instant checkout</Text>
+                <Text style={styles.buyButtonText}>
+                  {dictionary.videoFeedBuyNow}
+                </Text>
+              </View>
+              <Text style={styles.buyButtonArrow}>›</Text>
             </Pressable>
           </View>
         </View>
@@ -141,31 +146,6 @@ export function VideoFeedScreen({
   onOpenProduct
 }: VideoFeedScreenProps) {
   const dictionary = getBuyerDictionary(locale);
-  const [activeId, setActiveId] = useState<string | null>(items[0]?.id ?? null);
-  const resolvedActiveId = items.some((item) => item.id === activeId)
-    ? activeId
-    : (items[0]?.id ?? null);
-  const viewabilityConfig = useMemo(
-    () => ({
-      itemVisiblePercentThreshold: 70
-    }),
-    []
-  );
-  const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const nextItem = viewableItems[0]?.item;
-
-      if (
-        nextItem &&
-        typeof nextItem === "object" &&
-        "id" in nextItem &&
-        typeof nextItem.id === "string"
-      ) {
-        setActiveId(nextItem.id);
-      }
-    },
-    []
-  );
 
   if (isLoading) {
     return (
@@ -196,11 +176,9 @@ export function VideoFeedScreen({
         }
       }}
       onEndReachedThreshold={0.5}
-      onViewableItemsChanged={onViewableItemsChanged}
       pagingEnabled
       renderItem={({ item }) => (
         <VideoFeedCard
-          active={resolvedActiveId === item.id}
           item={item}
           locale={locale}
           onOpenProduct={() => onOpenProduct(item.product.slug)}
@@ -209,7 +187,6 @@ export function VideoFeedScreen({
       showsVerticalScrollIndicator={false}
       snapToAlignment="start"
       snapToInterval={cardHeight + 18}
-      viewabilityConfig={viewabilityConfig}
       ListHeaderComponent={
         <View style={styles.heroCard}>
           <Text style={styles.heroEyebrow}>KhmerCart Video</Text>
@@ -231,18 +208,64 @@ export function VideoFeedScreen({
 }
 
 const styles = StyleSheet.create({
+  actionBubble: {
+    alignItems: "center",
+    backgroundColor: "rgba(8, 7, 5, 0.48)",
+    borderColor: "rgba(255, 250, 242, 0.16)",
+    borderRadius: 999,
+    borderWidth: 1,
+    gap: 4,
+    minWidth: 62,
+    paddingHorizontal: 10,
+    paddingVertical: 12
+  },
+  actionEmoji: {
+    color: palette.card,
+    fontSize: 18,
+    fontWeight: "700"
+  },
+  actionLabel: {
+    color: palette.card,
+    fontSize: 11,
+    fontWeight: "700"
+  },
+  actionRail: {
+    alignItems: "center",
+    gap: 10,
+    justifyContent: "flex-end"
+  },
   body: {
     color: palette.card,
     fontSize: 15,
     lineHeight: 22
   },
+  bottomRow: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+    gap: 14
+  },
   buyButton: {
     alignItems: "center",
     backgroundColor: palette.card,
     borderRadius: 999,
-    justifyContent: "center",
-    minHeight: 46,
-    paddingHorizontal: 18
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 58,
+    paddingHorizontal: 18,
+    paddingVertical: 14
+  },
+  buyButtonArrow: {
+    color: palette.ink,
+    fontSize: 28,
+    fontWeight: "400",
+    lineHeight: 28
+  },
+  buyButtonEyebrow: {
+    color: palette.muted,
+    fontSize: 11,
+    fontWeight: "700",
+    marginBottom: 2,
+    textTransform: "uppercase"
   },
   buyButtonText: {
     color: palette.ink,
@@ -264,6 +287,14 @@ const styles = StyleSheet.create({
   card: {
     height: cardHeight,
     paddingHorizontal: 20
+  },
+  creatorBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(12, 11, 8, 0.38)",
+    borderRadius: 999,
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10
   },
   errorText: {
     color: palette.card,
@@ -302,6 +333,24 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 36
   },
+  leftColumn: {
+    flex: 1,
+    gap: 14,
+    justifyContent: "flex-end"
+  },
+  liveChip: {
+    alignSelf: "flex-start",
+    backgroundColor: "#e44f2d",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7
+  },
+  liveChipText: {
+    color: palette.card,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.4
+  },
   listContent: {
     backgroundColor: palette.background,
     gap: 18,
@@ -321,12 +370,7 @@ const styles = StyleSheet.create({
     gap: 14
   },
   overlayHeader: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(12, 11, 8, 0.38)",
-    borderRadius: 999,
-    gap: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 10
+    gap: 10
   },
   overlayMeta: {
     color: "#d5efe7",
@@ -341,6 +385,52 @@ const styles = StyleSheet.create({
   },
   poster: {
     ...StyleSheet.absoluteFillObject
+  },
+  posterWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(8, 7, 5, 0.14)"
+  },
+  productChip: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 250, 242, 0.95)",
+    borderRadius: 22,
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  productChipBody: {
+    flex: 1,
+    gap: 2
+  },
+  productChipLabel: {
+    color: palette.muted,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  productChipPrice: {
+    color: palette.ink,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  productChipThumb: {
+    alignItems: "center",
+    backgroundColor: palette.accent,
+    borderRadius: 14,
+    height: 46,
+    justifyContent: "center",
+    width: 46
+  },
+  productChipThumbText: {
+    color: palette.card,
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  productChipTitle: {
+    color: palette.ink,
+    fontSize: 13,
+    fontWeight: "700"
   },
   productMeta: {
     color: "#e4dbcf",
@@ -366,9 +456,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     textAlign: "center"
-  },
-  video: {
-    ...StyleSheet.absoluteFillObject
   },
   videoFrame: {
     backgroundColor: "#0d0f0d",
