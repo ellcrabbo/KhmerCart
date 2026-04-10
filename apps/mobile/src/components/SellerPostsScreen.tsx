@@ -8,6 +8,7 @@ import { getBuyerDictionary } from "../lib/i18n";
 import { palette } from "../lib/theme";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,8 +18,10 @@ import {
 } from "react-native";
 
 export type SellerVideoDraftState = {
+  durationSec: number | null;
   caption: string;
   posterLabel: string | null;
+  posterPreviewUrl: string | null;
   productId: string | null;
   status: "DRAFT" | "PUBLISHED";
   videoLabel: string | null;
@@ -58,6 +61,13 @@ export function SellerPostsScreen({
   onSelectProduct
 }: SellerPostsScreenProps) {
   const dictionary = getBuyerDictionary(locale);
+  const selectedProduct =
+    catalog?.products.find((product) => product.id === draft.productId) ?? null;
+  const draftReadyCount = [
+    Boolean(draft.caption.trim()),
+    Boolean(draft.videoLabel),
+    Boolean(draft.productId),
+  ].filter(Boolean).length;
 
   if (isLoading) {
     return (
@@ -81,6 +91,28 @@ export function SellerPostsScreen({
 
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>{dictionary.sellerCreateVideoPost}</Text>
+
+        <View style={styles.readinessCard}>
+          <View style={styles.readinessHeader}>
+            <Text style={styles.readinessTitle}>Publish readiness</Text>
+            <Text style={styles.readinessPill}>{draftReadyCount}/3</Text>
+          </View>
+          <Text style={styles.readinessBody}>
+            Add a caption, select a vertical clip, and attach one product before
+            publishing to the buyer feed.
+          </Text>
+          <View style={styles.readinessRow}>
+            <Text style={styles.readinessItem}>
+              {draft.caption.trim() ? "●" : "○"} Hook
+            </Text>
+            <Text style={styles.readinessItem}>
+              {draft.videoLabel ? "●" : "○"} Video
+            </Text>
+            <Text style={styles.readinessItem}>
+              {draft.productId ? "●" : "○"} Product
+            </Text>
+          </View>
+        </View>
 
         <TextInput
           multiline
@@ -121,6 +153,31 @@ export function SellerPostsScreen({
         <Text style={styles.assetLabel}>
           {draft.posterLabel ?? dictionary.sellerNoPosterSelected}
         </Text>
+
+        {draft.posterPreviewUrl || selectedProduct ? (
+          <View style={styles.previewCard}>
+            {draft.posterPreviewUrl ? (
+              <Image
+                source={{ uri: draft.posterPreviewUrl }}
+                style={styles.previewPoster}
+              />
+            ) : (
+              <View style={[styles.previewPoster, styles.previewPosterFallback]}>
+                <Text style={styles.previewPosterFallbackText}>KC</Text>
+              </View>
+            )}
+            <View style={styles.previewCopy}>
+              <Text style={styles.previewEyebrow}>Draft preview</Text>
+              <Text numberOfLines={2} style={styles.previewTitle}>
+                {draft.caption.trim() || "Add your selling hook"}
+              </Text>
+              <Text style={styles.previewMeta}>
+                {selectedProduct?.name ?? "Attach a product"}{" "}
+                {draft.durationSec ? `· ${draft.durationSec}s` : ""}
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>{dictionary.sellerAttachedProduct}</Text>
@@ -199,16 +256,29 @@ export function SellerPostsScreen({
         {posts?.posts.length ? (
           posts.posts.map((post) => (
             <View key={post.id} style={styles.card}>
-              <View style={styles.row}>
-                <Text style={styles.productChipTitle}>{post.product.name}</Text>
-                <Text style={styles.statusPill}>{post.status}</Text>
+              <View style={styles.postRow}>
+                {post.posterUrl ? (
+                  <Image source={{ uri: post.posterUrl }} style={styles.postPoster} />
+                ) : (
+                  <View style={[styles.postPoster, styles.previewPosterFallback]}>
+                    <Text style={styles.previewPosterFallbackText}>KC</Text>
+                  </View>
+                )}
+                <View style={styles.postCopy}>
+                  <View style={styles.row}>
+                    <Text style={styles.productChipTitle}>{post.product.name}</Text>
+                    <Text style={styles.statusPill}>{post.status}</Text>
+                  </View>
+                  <Text style={styles.captionPreview}>{post.caption}</Text>
+                  <Text style={styles.productChipMeta}>
+                    {post.product.currency &&
+                    typeof post.product.priceMinor === "number"
+                      ? formatMoney(locale, post.product.currency, post.product.priceMinor)
+                      : post.product.status}
+                    {post.publishedAt ? ` · Live ${post.publishedAt.slice(0, 10)}` : ""}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.captionPreview}>{post.caption}</Text>
-              <Text style={styles.productChipMeta}>
-                {post.product.currency && typeof post.product.priceMinor === "number"
-                  ? formatMoney(locale, post.product.currency, post.product.priceMinor)
-                  : post.product.status}
-              </Text>
             </View>
           ))
         ) : (
@@ -358,6 +428,99 @@ const styles = StyleSheet.create({
   },
   productGrid: {
     gap: 10
+  },
+  postCopy: {
+    flex: 1,
+    gap: 6
+  },
+  postPoster: {
+    backgroundColor: palette.accentMuted,
+    borderRadius: 20,
+    height: 112,
+    width: 84
+  },
+  postRow: {
+    flexDirection: "row",
+    gap: 14
+  },
+  previewCard: {
+    alignItems: "center",
+    backgroundColor: palette.accentMuted,
+    borderRadius: 24,
+    flexDirection: "row",
+    gap: 14,
+    padding: 14
+  },
+  previewCopy: {
+    flex: 1,
+    gap: 4
+  },
+  previewEyebrow: {
+    color: palette.accent,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  previewMeta: {
+    color: palette.muted,
+    fontSize: 12,
+    lineHeight: 17
+  },
+  previewPoster: {
+    backgroundColor: palette.card,
+    borderRadius: 20,
+    height: 120,
+    width: 92
+  },
+  previewPosterFallback: {
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  previewPosterFallbackText: {
+    color: palette.accent,
+    fontSize: 20,
+    fontWeight: "800"
+  },
+  previewTitle: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: "700",
+    lineHeight: 22
+  },
+  readinessBody: {
+    color: palette.muted,
+    fontSize: 13,
+    lineHeight: 19
+  },
+  readinessCard: {
+    backgroundColor: palette.sunMuted,
+    borderRadius: 22,
+    gap: 8,
+    padding: 14
+  },
+  readinessHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  readinessItem: {
+    color: palette.ink,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  readinessPill: {
+    color: palette.sun,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  readinessRow: {
+    flexDirection: "row",
+    gap: 12
+  },
+  readinessTitle: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: "800"
   },
   row: {
     alignItems: "center",

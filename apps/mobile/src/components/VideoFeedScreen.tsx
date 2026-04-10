@@ -24,12 +24,14 @@ type VideoFeedScreenProps = {
   items: BuyerVideoFeedItem[];
   locale: BuyerLocale;
   onEndReached: () => void;
+  onOpenPost: (postId: string) => void;
   onOpenProduct: (slug: string) => void;
 };
 
 type VideoFeedCardProps = {
   item: BuyerVideoFeedItem;
   locale: BuyerLocale;
+  onOpenPost: () => void;
   onOpenProduct: () => void;
 };
 
@@ -39,6 +41,7 @@ const cardHeight = Math.max(560, windowHeight - 170);
 function VideoFeedCard({
   item,
   locale,
+  onOpenPost,
   onOpenProduct
 }: VideoFeedCardProps) {
   const dictionary = getBuyerDictionary(locale);
@@ -49,7 +52,7 @@ function VideoFeedCard({
   );
 
   return (
-    <View style={styles.card}>
+    <Pressable onPress={onOpenPost} style={styles.card}>
       <View style={styles.videoFrame}>
         {item.video.posterUrl ? (
           <Image
@@ -132,7 +135,7 @@ function VideoFeedCard({
           </View>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -143,6 +146,7 @@ export function VideoFeedScreen({
   items,
   locale,
   onEndReached,
+  onOpenPost,
   onOpenProduct
 }: VideoFeedScreenProps) {
   const dictionary = getBuyerDictionary(locale);
@@ -181,6 +185,7 @@ export function VideoFeedScreen({
         <VideoFeedCard
           item={item}
           locale={locale}
+          onOpenPost={() => onOpenPost(item.id)}
           onOpenProduct={() => onOpenProduct(item.product.slug)}
         />
       )}

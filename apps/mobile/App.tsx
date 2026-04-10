@@ -45,6 +45,7 @@ import { CartScreen } from "./src/components/CartScreen";
 import { OrdersScreen } from "./src/components/OrdersScreen";
 import { OrderTrackingScreen } from "./src/components/OrderTrackingScreen";
 import { PaymentResultScreen } from "./src/components/PaymentResultScreen";
+import { PostViewerScreen } from "./src/components/PostViewerScreen";
 import { ProductDetailScreen } from "./src/components/ProductDetailScreen";
 import { SellerCatalogScreen } from "./src/components/SellerCatalogScreen";
 import { SellerCreatorScreen } from "./src/components/SellerCreatorScreen";
@@ -172,8 +173,10 @@ const initialSellerVideoDraft: SellerVideoDraftState & {
   videoAsset: SelectedUploadAsset | null;
 } = {
   caption: "",
+  durationSec: null,
   posterAsset: null,
   posterLabel: null,
+  posterPreviewUrl: null,
   productId: null,
   status: "DRAFT",
   videoAsset: null,
@@ -255,6 +258,7 @@ export default function App() {
   const [selectedProductSlug, setSelectedProductSlug] = useState<string | null>(
     null,
   );
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] =
     useState<BuyerProductDetail | null>(null);
   const [isProductLoading, setIsProductLoading] = useState(false);
@@ -802,6 +806,7 @@ export default function App() {
     setTrackingOrderId(null);
     setTrackingData(null);
     setTrackingError(null);
+    setSelectedPostId(null);
     setIsSellerMode(false);
     setSellerTab("create");
     setSellerDashboard(null);
@@ -933,6 +938,7 @@ export default function App() {
 
       setSellerVideoDraft((current) => ({
         ...current,
+        durationSec: asset.durationSec,
         videoAsset: asset,
         videoLabel: asset.fileName,
       }));
@@ -957,6 +963,7 @@ export default function App() {
         ...current,
         posterAsset: asset,
         posterLabel: asset.fileName,
+        posterPreviewUrl: asset.uri,
       }));
       setSellerMessage("Poster selected for the next post.");
       setSellerError(null);
@@ -1465,6 +1472,7 @@ export default function App() {
     setTrackingError(null);
     setActiveTab("home");
     setSelectedProductSlug(null);
+    setSelectedPostId(null);
   }
 
   function handleSelectTab(nextTab: ShellTab) {
@@ -1514,6 +1522,7 @@ export default function App() {
         items={feedState.items}
         locale={locale}
         onEndReached={handleLoadMore}
+        onOpenPost={setSelectedPostId}
         onOpenProduct={setSelectedProductSlug}
       />
     );
@@ -1642,6 +1651,10 @@ export default function App() {
           onCreateProduct={handleCreateSellerListing}
           onOpenCatalog={() => setSellerTab("catalog")}
           onOpenPosts={() => setSellerTab("posts")}
+          onOpenStorefront={() => {
+            setIsSellerMode(false);
+            setActiveTab("home");
+          }}
           onPickPoster={() => void handlePickSellerPoster()}
           onPickVideo={() => void handlePickSellerVideo()}
           onPublish={() => void handleCreateSellerVideoPost("PUBLISHED")}
@@ -1828,6 +1841,14 @@ export default function App() {
             onOpenCart={handleOpenCart}
             product={selectedProduct}
           />
+        ) : selectedPostId ? (
+          <PostViewerScreen
+            initialPostId={selectedPostId}
+            items={feedState.items}
+            locale={locale}
+            onBack={() => setSelectedPostId(null)}
+            onOpenProduct={setSelectedProductSlug}
+          />
         ) : isSellerMode ? (
           <View style={styles.shell}>
             <View style={styles.shellBody}>{renderSellerShellContent()}</View>
@@ -1835,6 +1856,7 @@ export default function App() {
               {renderSellerTabButton("create", dictionary.sellerCreateTab)}
               {renderSellerTabButton("overview", dictionary.sellerOverviewTab)}
               {renderSellerTabButton("catalog", dictionary.sellerCatalogTab)}
+              {renderSellerTabButton("posts", dictionary.sellerPostsTab)}
               {renderSellerTabButton("shipping", dictionary.sellerShippingTab)}
               <Pressable
                 onPress={() => setIsSellerMode(false)}

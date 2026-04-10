@@ -11,6 +11,7 @@ import { palette } from "../lib/theme";
 import type { SellerVideoDraftState } from "./SellerPostsScreen";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -40,6 +41,7 @@ type SellerCreatorScreenProps = {
   onCreateProduct: () => void;
   onOpenCatalog: () => void;
   onOpenPosts: () => void;
+  onOpenStorefront: () => void;
   onPickPoster: () => void;
   onPickVideo: () => void;
   onPublish: () => void;
@@ -82,6 +84,7 @@ export function SellerCreatorScreen({
   onCreateProduct,
   onOpenCatalog,
   onOpenPosts,
+  onOpenStorefront,
   onPickPoster,
   onPickVideo,
   onPublish,
@@ -99,6 +102,12 @@ export function SellerCreatorScreen({
   const canPublishSelectedProduct = selectedProduct
     ? isPublicPostReadyProduct(selectedProduct)
     : false;
+  const publishReadiness = [
+    Boolean(productDraft.name?.trim()),
+    Boolean(videoDraft.caption.trim()),
+    Boolean(videoDraft.videoLabel),
+    Boolean(videoDraft.productId),
+  ].filter(Boolean).length;
 
   if (isLoading) {
     return (
@@ -135,6 +144,17 @@ export function SellerCreatorScreen({
               {dictionary.sellerCreatorPostReady}
             </Text>
           </View>
+        </View>
+
+        <View style={styles.milestoneCard}>
+          <View style={styles.milestoneHeader}>
+            <Text style={styles.milestoneTitle}>Creator studio</Text>
+            <Text style={styles.milestoneValue}>{publishReadiness}/4</Text>
+          </View>
+          <Text style={styles.helperText}>
+            Build one product, attach one shoppable clip, then jump back to the
+            buyer feed to verify the storefront loop.
+          </Text>
         </View>
       </View>
 
@@ -285,6 +305,31 @@ export function SellerCreatorScreen({
           </Text>
         </View>
 
+        {videoDraft.posterPreviewUrl || selectedProduct ? (
+          <View style={styles.previewCard}>
+            {videoDraft.posterPreviewUrl ? (
+              <Image
+                source={{ uri: videoDraft.posterPreviewUrl }}
+                style={styles.previewPoster}
+              />
+            ) : (
+              <View style={[styles.previewPoster, styles.previewPosterFallback]}>
+                <Text style={styles.previewPosterFallbackText}>KC</Text>
+              </View>
+            )}
+            <View style={styles.previewCopy}>
+              <Text style={styles.previewEyebrow}>Buyer feed preview</Text>
+              <Text numberOfLines={2} style={styles.previewTitle}>
+                {videoDraft.caption.trim() || "Add your seller hook"}
+              </Text>
+              <Text style={styles.previewMeta}>
+                {selectedProduct?.name ?? "Attach a product"}{" "}
+                {videoDraft.durationSec ? `· ${videoDraft.durationSec}s` : ""}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>
             {dictionary.sellerAttachedProduct}
@@ -408,6 +453,9 @@ export function SellerCreatorScreen({
               {dictionary.sellerPostsTab}
             </Text>
           </Pressable>
+          <Pressable onPress={onOpenStorefront} style={styles.linkButton}>
+            <Text style={styles.linkButtonText}>{dictionary.homeTab}</Text>
+          </Pressable>
         </View>
       </View>
     </ScrollView>
@@ -528,6 +576,28 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     paddingHorizontal: 20,
   },
+  milestoneCard: {
+    backgroundColor: palette.accentMuted,
+    borderRadius: 22,
+    gap: 8,
+    padding: 14,
+  },
+  milestoneHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  milestoneTitle: {
+    color: palette.accent,
+    fontSize: 14,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  milestoneValue: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: "800",
+  },
   metricCard: {
     backgroundColor: palette.sunMuted,
     borderRadius: 20,
@@ -602,6 +672,50 @@ const styles = StyleSheet.create({
   productGrid: {
     gap: 10,
     paddingRight: 6,
+  },
+  previewCard: {
+    alignItems: "center",
+    backgroundColor: palette.accentMuted,
+    borderRadius: 24,
+    flexDirection: "row",
+    gap: 14,
+    padding: 14,
+  },
+  previewCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  previewEyebrow: {
+    color: palette.accent,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  previewMeta: {
+    color: palette.muted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  previewPoster: {
+    backgroundColor: palette.card,
+    borderRadius: 20,
+    height: 120,
+    width: 92,
+  },
+  previewPosterFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewPosterFallbackText: {
+    color: palette.accent,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  previewTitle: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: "700",
+    lineHeight: 22,
   },
   productStatus: {
     fontSize: 11,
