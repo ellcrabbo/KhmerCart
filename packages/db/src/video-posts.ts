@@ -293,6 +293,20 @@ function looksLikeVideoAsset(key: string): boolean {
   return /\.(mp4|m4v|mov|webm)$/i.test(key);
 }
 
+function createFallbackPosterUrl(seed: string): string {
+  return `https://placehold.co/720x1280/125b50/f4f0e8/png?text=${encodeURIComponent(seed)}`;
+}
+
+function resolveFallbackProductImageUrl(record: PublicVideoPostRecord): string {
+  const featuredImageUrl = record.product.images[0]?.url;
+
+  if (featuredImageUrl && !featuredImageUrl.includes(".local")) {
+    return featuredImageUrl;
+  }
+
+  return createFallbackPosterUrl(`${record.seller.displayName} video`);
+}
+
 async function resolveSignedDownloadUrl(key: string | null | undefined): Promise<string | null> {
   if (!key) {
     return null;
@@ -478,7 +492,7 @@ async function mapBuyerVideoFeedItem(record: PublicVideoPostRecord): Promise<Buy
     looksLikeVideoAsset(record.videoKey) ? resolveSignedDownloadUrl(record.videoKey) : null,
     resolveSignedDownloadUrl(record.posterKey)
   ]);
-  const resolvedPosterUrl = posterUrl ?? record.product.images[0]?.url ?? null;
+  const resolvedPosterUrl = posterUrl ?? resolveFallbackProductImageUrl(record);
 
   return {
     caption: record.caption,
