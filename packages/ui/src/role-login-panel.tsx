@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 type RoleLoginPanelProps = {
   appName: string;
+  description?: string;
   errorCode?: string | null;
   nextPath: string;
   requestOtpUrl: string;
@@ -29,7 +30,10 @@ type VerifyOtpResponse = {
   };
 };
 
-function getErrorMessage(errorCode: string | null | undefined, roleLabel: string): string | null {
+function getErrorMessage(
+  errorCode: string | null | undefined,
+  roleLabel: string,
+): string | null {
   if (errorCode === "forbidden") {
     return `This account does not have ${roleLabel.toLowerCase()} access. Sign in with a different account.`;
   }
@@ -43,11 +47,12 @@ function getErrorMessage(errorCode: string | null | undefined, roleLabel: string
 
 export function RoleLoginPanel({
   appName,
+  description,
   errorCode,
   nextPath,
   requestOtpUrl,
   roleLabel,
-  verifyOtpUrl
+  verifyOtpUrl,
 }: RoleLoginPanelProps) {
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
@@ -58,9 +63,11 @@ export function RoleLoginPanel({
   const [isVerifying, setIsVerifying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
-  const [requestedIdentifier, setRequestedIdentifier] = useState<string | null>(null);
+  const [requestedIdentifier, setRequestedIdentifier] = useState<string | null>(
+    null,
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(
-    getErrorMessage(errorCode, roleLabel)
+    getErrorMessage(errorCode, roleLabel),
   );
 
   const expiresLabel = useMemo(() => {
@@ -84,9 +91,9 @@ export function RoleLoginPanel({
         body: JSON.stringify({ identifier }),
         credentials: "same-origin",
         headers: {
-          "content-type": "application/json"
+          "content-type": "application/json",
         },
-        method: "POST"
+        method: "POST",
       });
       const payload = (await response.json()) as RequestOtpResponse & {
         error?: string;
@@ -94,7 +101,9 @@ export function RoleLoginPanel({
       };
 
       if (!response.ok) {
-        throw new Error(payload.message || payload.error || "Unable to request OTP.");
+        throw new Error(
+          payload.message || payload.error || "Unable to request OTP.",
+        );
       }
 
       setChannel(payload.channel);
@@ -102,9 +111,13 @@ export function RoleLoginPanel({
       setExpiresAt(payload.expiresAt);
       setProvider(payload.provider);
       setRequestedIdentifier(payload.identifier);
-      setMessage(`Verification code sent for ${payload.channel.toLowerCase()} login.`);
+      setMessage(
+        `Verification code sent for ${payload.channel.toLowerCase()} login.`,
+      );
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to request OTP.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to request OTP.",
+      );
     } finally {
       setIsRequesting(false);
     }
@@ -120,13 +133,13 @@ export function RoleLoginPanel({
       const response = await fetch(verifyOtpUrl, {
         body: JSON.stringify({
           code,
-          identifier: requestedIdentifier ?? identifier
+          identifier: requestedIdentifier ?? identifier,
         }),
         credentials: "same-origin",
         headers: {
-          "content-type": "application/json"
+          "content-type": "application/json",
         },
-        method: "POST"
+        method: "POST",
       });
       const payload = (await response.json()) as VerifyOtpResponse & {
         error?: string;
@@ -134,7 +147,9 @@ export function RoleLoginPanel({
       };
 
       if (!response.ok) {
-        throw new Error(payload.message || payload.error || "Unable to verify OTP.");
+        throw new Error(
+          payload.message || payload.error || "Unable to verify OTP.",
+        );
       }
 
       const roleName = payload.session.user.primaryRole ?? roleLabel;
@@ -142,7 +157,9 @@ export function RoleLoginPanel({
       setMessage(`Signed in as ${roleName.toLowerCase()}. Redirecting...`);
       window.location.assign(nextPath);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to verify OTP.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to verify OTP.",
+      );
     } finally {
       setIsVerifying(false);
     }
@@ -159,9 +176,8 @@ export function RoleLoginPanel({
             Access the {appName}
           </h2>
           <p className="text-sm leading-7 text-stone-700 md:text-base">
-            Use the email address attached to your {roleLabel.toLowerCase()} account. OTP
-            verification happens on this domain so the session cookie stays attached to the app you
-            are opening.
+            {description ??
+              `Use the email address attached to your ${roleLabel.toLowerCase()} account. OTP verification happens on this domain so the session cookie stays attached to the app you are opening.`}
           </p>
         </div>
 
@@ -186,9 +202,14 @@ export function RoleLoginPanel({
           </button>
         </form>
 
-        <form className="mt-6 space-y-4 border-t border-black/10 pt-6" onSubmit={verifyOtp}>
+        <form
+          className="mt-6 space-y-4 border-t border-black/10 pt-6"
+          onSubmit={verifyOtp}
+        >
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-stone-800">Verification code</span>
+            <span className="text-sm font-medium text-stone-800">
+              Verification code
+            </span>
             <input
               autoComplete="one-time-code"
               className="w-full rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-500/60 focus:bg-white"
@@ -201,7 +222,9 @@ export function RoleLoginPanel({
 
           <button
             className="inline-flex w-full items-center justify-center rounded-full border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-stone-950 transition hover:-translate-y-0.5 hover:border-amber-500/40 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isVerifying || code.trim().length === 0 || !requestedIdentifier}
+            disabled={
+              isVerifying || code.trim().length === 0 || !requestedIdentifier
+            }
             type="submit"
           >
             {isVerifying ? "Signing in..." : "Verify and continue"}
@@ -230,7 +253,9 @@ export function RoleLoginPanel({
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-stone-500">
               Required role
             </p>
-            <p className="mt-2 text-sm font-medium text-stone-900">{roleLabel}</p>
+            <p className="mt-2 text-sm font-medium text-stone-900">
+              {roleLabel}
+            </p>
           </div>
           <div className="rounded-2xl border border-black/10 bg-stone-50/90 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-stone-500">

@@ -1,4 +1,10 @@
-import { canSellerListProducts, readKycDocumentTypes } from "@khmercart/core";
+import {
+  canSellerListProducts,
+  getPrimaryRole,
+  readKycDocumentTypes,
+  type Role,
+  type SessionUser,
+} from "@khmercart/core";
 import {
   Currency,
   KycStatus,
@@ -6,9 +12,14 @@ import {
   type PrismaClient,
   type Seller,
   type SellerDocument,
-  type User
+  type User,
+  UserRole,
 } from "./prisma-client";
-import { createSignedDownloadUrl, createSignedUploadUrl, getSignedUrlTtlSeconds } from "./storage";
+import {
+  createSignedDownloadUrl,
+  createSignedUploadUrl,
+  getSignedUrlTtlSeconds,
+} from "./storage";
 import { prisma } from "./prisma";
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
@@ -150,7 +161,10 @@ function sanitizeSlug(input: string | undefined, fallback: string): string {
   return normalized || "seller";
 }
 
-function parseCurrency(value: string | undefined, fallback: Currency): Currency {
+function parseCurrency(
+  value: string | undefined,
+  fallback: Currency,
+): Currency {
   if (value === Currency.KHR) {
     return Currency.KHR;
   }
@@ -186,11 +200,14 @@ function buildDefaultSellerProfile(user: UserWithSeller) {
     payoutRoutingNumber: seller?.payoutRoutingNumber ?? "",
     slug: seller?.slug ?? sanitizeSlug(undefined, user.fullName),
     supportEmail: seller?.supportEmail ?? user.email ?? "",
-    supportPhone: seller?.supportPhone ?? user.phone ?? ""
+    supportPhone: seller?.supportPhone ?? user.phone ?? "",
   };
 }
 
-function getMissingRequirements(data: SellerDashboardData["seller"], uploadedDocumentCount: number) {
+function getMissingRequirements(
+  data: SellerDashboardData["seller"],
+  uploadedDocumentCount: number,
+) {
   const missing: string[] = [];
 
   if (!data.displayName.trim()) {
@@ -241,7 +258,7 @@ function mapDocuments(documents: SellerDocument[]) {
     s3Key: document.s3Key,
     sizeBytes: document.sizeBytes ?? null,
     type: document.type,
-    uploadedAt: serializeDate(document.uploadedAt)
+    uploadedAt: serializeDate(document.uploadedAt),
   }));
 }
 
@@ -256,7 +273,7 @@ async function recordAuditLog(
     entityType: string;
     ipAddress?: string | null;
     userAgent?: string | null;
-  }
+  },
 ) {
   await tx.auditLog.create({
     data: {
@@ -267,14 +284,14 @@ async function recordAuditLog(
       entityId: input.entityId,
       entityType: input.entityType,
       ipAddress: input.ipAddress ?? null,
-      userAgent: input.userAgent ?? null
-    }
+      userAgent: input.userAgent ?? null,
+    },
   });
 }
 
 async function getUserWithSeller(
   db: DatabaseClient,
-  userId: string
+  userId: string,
 ): Promise<UserWithSeller> {
   const user = await db.user.findUnique({
     include: {
@@ -282,15 +299,15 @@ async function getUserWithSeller(
         include: {
           documents: {
             orderBy: {
-              createdAt: "desc"
-            }
-          }
-        }
-      }
+              createdAt: "desc",
+            },
+          },
+        },
+      },
     },
     where: {
-      id: userId
-    }
+      id: userId,
+    },
   });
 
   if (!user) {
@@ -303,7 +320,7 @@ async function getUserWithSeller(
 async function ensureUniqueSellerSlug(
   tx: Prisma.TransactionClient,
   desiredSlug: string,
-  sellerId?: string
+  sellerId?: string,
 ): Promise<string> {
   let attempt = 0;
   let candidate = desiredSlug;
@@ -312,8 +329,8 @@ async function ensureUniqueSellerSlug(
     const conflict = await tx.seller.findFirst({
       where: {
         ...(sellerId ? { id: { not: sellerId } } : {}),
-        slug: candidate
-      }
+        slug: candidate,
+      },
     });
 
     if (!conflict) {
@@ -337,7 +354,7 @@ function sellerSnapshot(seller: SellerWithDocuments | null) {
     documents: seller.documents.map((document) => ({
       id: document.id,
       type: document.type,
-      uploadedAt: serializeDate(document.uploadedAt)
+      uploadedAt: serializeDate(document.uploadedAt),
     })),
     kycStatus: seller.kycStatus,
     legalName: seller.legalName,
@@ -345,13 +362,13 @@ function sellerSnapshot(seller: SellerWithDocuments | null) {
     payoutBankName: seller.payoutBankName,
     slug: seller.slug,
     supportEmail: seller.supportEmail,
-    supportPhone: seller.supportPhone
+    supportPhone: seller.supportPhone,
   };
 }
 
 function resolveSellerStatus(
   currentStatus: KycStatus | null,
-  submitForReview: boolean
+  submitForReview: boolean,
 ): KycStatus {
   if (!submitForReview) {
     return currentStatus ?? KycStatus.PENDING;
@@ -364,7 +381,10 @@ function resolveSellerStatus(
   return KycStatus.SUBMITTED;
 }
 
-async function ensureSellerForUser(tx: Prisma.TransactionClient, user: UserWithSeller) {
+async function ensureSellerForUser(
+  tx: Prisma.TransactionClient,
+  user: UserWithSeller,
+) {
   if (user.sellerProfile) {
     return user.sellerProfile;
   }
@@ -378,24 +398,102 @@ async function ensureSellerForUser(tx: Prisma.TransactionClient, user: UserWithS
       slug,
       supportEmail: user.email,
       supportPhone: user.phone,
-      userId: user.id
+      userId: user.id,
     },
     include: {
       documents: {
         orderBy: {
-          createdAt: "desc"
-        }
-      }
-    }
+          createdAt: "desc",
+        },
+      },
+    },
   });
 }
 
-export async function getSellerDashboardData(userId: string): Promise<SellerDashboardData> {
+async function getSellerSignupSession(
+  tx: Prisma.TransactionClient,
+  userId: string,
+): Promise<SessionUser> {
+  const user = await tx.user.findUniqueOrThrow({
+    include: {
+      roleAssignments: true,
+    },
+    where: {
+      id: userId,
+    },
+  });
+  const roles = user.roleAssignments.map(
+    (assignment) => assignment.role as Role,
+  );
+
+  return {
+    email: user.email,
+    id: user.id,
+    phone: user.phone,
+    primaryRole: getPrimaryRole(roles),
+    roles,
+  };
+}
+
+export async function ensureSellerAccountForUser(
+  userId: string,
+): Promise<SessionUser> {
+  return prisma.$transaction(async (tx) => {
+    const user = await getUserWithSeller(tx, userId);
+    const existingSeller = user.sellerProfile;
+    const existingSellerRole = await tx.userRoleAssignment.findUnique({
+      where: {
+        userId_role: {
+          role: UserRole.SELLER,
+          userId: user.id,
+        },
+      },
+    });
+    const seller = await ensureSellerForUser(tx, user);
+
+    await tx.userRoleAssignment.upsert({
+      create: {
+        role: UserRole.SELLER,
+        userId: user.id,
+      },
+      update: {},
+      where: {
+        userId_role: {
+          role: UserRole.SELLER,
+          userId: user.id,
+        },
+      },
+    });
+
+    if (!existingSeller || !existingSellerRole) {
+      await recordAuditLog(tx, {
+        action: "SELLER_SIGNUP_COMPLETED",
+        actorUserId: user.id,
+        afterData: {
+          sellerId: seller.id,
+        },
+        entityId: seller.id,
+        entityType: "Seller",
+      });
+    }
+
+    return getSellerSignupSession(tx, user.id);
+  });
+}
+
+export async function getSellerDashboardData(
+  userId: string,
+): Promise<SellerDashboardData> {
   const user = await getUserWithSeller(prisma, userId);
   const seller = buildDefaultSellerProfile(user);
   const uploadedDocumentCount =
-    user.sellerProfile?.documents.filter((document) => document.uploadedAt !== null).length ?? 0;
-  const missingRequirements = getMissingRequirements(seller, uploadedDocumentCount);
+    user.sellerProfile?.documents.filter(
+      (document) => document.uploadedAt !== null,
+    ).length ?? 0;
+  const missingRequirements = getMissingRequirements(
+    seller,
+    uploadedDocumentCount,
+  );
 
   return {
     canListProducts: canSellerListProducts(user.sellerProfile?.kycStatus),
@@ -403,57 +501,75 @@ export async function getSellerDashboardData(userId: string): Promise<SellerDash
     kycDocumentTypes: readKycDocumentTypes(process.env),
     missingRequirements,
     seller,
-    submitDisabled: missingRequirements.length > 0 || user.sellerProfile?.kycStatus === KycStatus.APPROVED,
+    submitDisabled:
+      missingRequirements.length > 0 ||
+      user.sellerProfile?.kycStatus === KycStatus.APPROVED,
     user: {
       email: user.email,
       fullName: user.fullName,
       id: user.id,
-      phone: user.phone
-    }
+      phone: user.phone,
+    },
   };
 }
 
 export async function saveSellerOnboarding(
-  input: SaveSellerOnboardingInput
+  input: SaveSellerOnboardingInput,
 ): Promise<SellerDashboardData> {
   await prisma.$transaction(async (tx) => {
     const user = await getUserWithSeller(tx, input.userId);
     const seller = user.sellerProfile;
     const currentProfile = buildDefaultSellerProfile(user);
     const nextProfile = {
-      businessDescription: input.businessDescription?.trim() ?? currentProfile.businessDescription,
-      defaultCurrency: parseCurrency(input.defaultCurrency, currentProfile.defaultCurrency),
+      businessDescription:
+        input.businessDescription?.trim() ?? currentProfile.businessDescription,
+      defaultCurrency: parseCurrency(
+        input.defaultCurrency,
+        currentProfile.defaultCurrency,
+      ),
       displayName: input.displayName?.trim() || currentProfile.displayName,
       legalName: input.legalName?.trim() ?? currentProfile.legalName,
-      payoutAccountName: input.payoutAccountName?.trim() ?? currentProfile.payoutAccountName,
-      payoutAccountNumber: input.payoutAccountNumber?.trim() ?? currentProfile.payoutAccountNumber,
-      payoutBankName: input.payoutBankName?.trim() ?? currentProfile.payoutBankName,
-      payoutRoutingNumber: input.payoutRoutingNumber?.trim() ?? currentProfile.payoutRoutingNumber,
+      payoutAccountName:
+        input.payoutAccountName?.trim() ?? currentProfile.payoutAccountName,
+      payoutAccountNumber:
+        input.payoutAccountNumber?.trim() ?? currentProfile.payoutAccountNumber,
+      payoutBankName:
+        input.payoutBankName?.trim() ?? currentProfile.payoutBankName,
+      payoutRoutingNumber:
+        input.payoutRoutingNumber?.trim() ?? currentProfile.payoutRoutingNumber,
       slug: sanitizeSlug(input.slug, currentProfile.slug || user.fullName),
       supportEmail: input.supportEmail?.trim() ?? currentProfile.supportEmail,
-      supportPhone: input.supportPhone?.trim() ?? currentProfile.supportPhone
+      supportPhone: input.supportPhone?.trim() ?? currentProfile.supportPhone,
     };
-    const nextSlug = await ensureUniqueSellerSlug(tx, nextProfile.slug, seller?.id);
+    const nextSlug = await ensureUniqueSellerSlug(
+      tx,
+      nextProfile.slug,
+      seller?.id,
+    );
     const uploadedDocumentCount =
-      seller?.documents.filter((document) => document.uploadedAt !== null).length ?? 0;
+      seller?.documents.filter((document) => document.uploadedAt !== null)
+        .length ?? 0;
     const missingRequirements = getMissingRequirements(
       {
         ...currentProfile,
         ...nextProfile,
-        slug: nextSlug
+        slug: nextSlug,
       },
-      uploadedDocumentCount
+      uploadedDocumentCount,
     );
 
     if (input.submitForReview && missingRequirements.length > 0) {
       throw new SellerServiceError(
         "SELLER_ONBOARDING_INCOMPLETE",
         `Seller onboarding is incomplete: ${missingRequirements.join(", ")}.`,
-        400
+        400,
       );
     }
 
-    const nextStatus = resolveSellerStatus(seller?.kycStatus ?? null, Boolean(input.submitForReview));
+    const nextStatus = resolveSellerStatus(
+      seller?.kycStatus ?? null,
+      Boolean(input.submitForReview),
+    );
     const nextSeller = await tx.seller.upsert({
       create: {
         businessDescription: nextProfile.businessDescription || null,
@@ -472,9 +588,9 @@ export async function saveSellerOnboarding(
         ...(input.submitForReview
           ? {
               kycRejectedAt: null,
-              kycSubmittedAt: new Date()
+              kycSubmittedAt: new Date(),
             }
-          : {})
+          : {}),
       },
       update: {
         businessDescription: nextProfile.businessDescription || null,
@@ -492,36 +608,42 @@ export async function saveSellerOnboarding(
         ...(input.submitForReview
           ? {
               kycRejectedAt: null,
-              kycSubmittedAt: new Date()
+              kycSubmittedAt: new Date(),
             }
-          : {})
+          : {}),
       },
       where: {
-        userId: user.id
-      }
+        userId: user.id,
+      },
     });
 
     await recordAuditLog(tx, {
-      action: input.submitForReview ? "SELLER_ONBOARDING_SUBMITTED" : "SELLER_ONBOARDING_UPDATED",
+      action: input.submitForReview
+        ? "SELLER_ONBOARDING_SUBMITTED"
+        : "SELLER_ONBOARDING_UPDATED",
       actorUserId: input.actorUserId ?? input.userId,
       afterData: {
         ...nextProfile,
         kycStatus: nextStatus,
         sellerId: nextSeller.id,
-        slug: nextSlug
+        slug: nextSlug,
       },
       beforeData: sellerSnapshot(seller),
       entityId: nextSeller.id,
       entityType: "Seller",
       ipAddress: input.ipAddress,
-      userAgent: input.userAgent
+      userAgent: input.userAgent,
     });
   });
 
   return getSellerDashboardData(input.userId);
 }
 
-function buildDocumentKey(sellerId: string, documentType: string, fileName: string) {
+function buildDocumentKey(
+  sellerId: string,
+  documentType: string,
+  fileName: string,
+) {
   const extensionMatch = /\.[a-z0-9]+$/i.exec(fileName);
   const extension = extensionMatch ? extensionMatch[0].toLowerCase() : "";
   const normalizedType = sanitizeSlug(documentType, "document");
@@ -540,11 +662,19 @@ export async function requestSellerDocumentUpload(input: {
   userId: string;
 }): Promise<SellerUploadRequest> {
   if (!input.documentType?.trim()) {
-    throw new SellerServiceError("BAD_REQUEST", "Document type is required.", 400);
+    throw new SellerServiceError(
+      "BAD_REQUEST",
+      "Document type is required.",
+      400,
+    );
   }
 
   if (!input.fileName?.trim() || !input.contentType?.trim()) {
-    throw new SellerServiceError("BAD_REQUEST", "File name and content type are required.", 400);
+    throw new SellerServiceError(
+      "BAD_REQUEST",
+      "File name and content type are required.",
+      400,
+    );
   }
 
   const documentType = input.documentType.trim().toUpperCase();
@@ -557,7 +687,7 @@ export async function requestSellerDocumentUpload(input: {
     const s3Key = buildDocumentKey(seller.id, documentType, fileName);
     const uploadUrl = await createSignedUploadUrl({
       contentType,
-      key: s3Key
+      key: s3Key,
     });
     const document = await tx.sellerDocument.create({
       data: {
@@ -566,8 +696,8 @@ export async function requestSellerDocumentUpload(input: {
         s3Key,
         sellerId: seller.id,
         sizeBytes: input.sizeBytes ?? null,
-        type: documentType
-      }
+        type: documentType,
+      },
     });
 
     await recordAuditLog(tx, {
@@ -577,19 +707,19 @@ export async function requestSellerDocumentUpload(input: {
         documentId: document.id,
         fileName: document.fileName,
         sellerId: seller.id,
-        type: document.type
+        type: document.type,
       },
       entityId: document.id,
       entityType: "SellerDocument",
       ipAddress: input.ipAddress,
-      userAgent: input.userAgent
+      userAgent: input.userAgent,
     });
 
     return {
       documentId: document.id,
       expiresInSeconds: getSignedUrlTtlSeconds(),
       s3Key,
-      uploadUrl
+      uploadUrl,
     };
   });
 }
@@ -604,27 +734,31 @@ export async function markSellerDocumentUploaded(input: {
   return prisma.$transaction(async (tx) => {
     const document = await tx.sellerDocument.findFirst({
       include: {
-        seller: true
+        seller: true,
       },
       where: {
         id: input.documentId,
         seller: {
-          userId: input.userId
-        }
-      }
+          userId: input.userId,
+        },
+      },
     });
 
     if (!document) {
-      throw new SellerServiceError("NOT_FOUND", "Seller document not found.", 404);
+      throw new SellerServiceError(
+        "NOT_FOUND",
+        "Seller document not found.",
+        404,
+      );
     }
 
     const updatedDocument = await tx.sellerDocument.update({
       data: {
-        uploadedAt: new Date()
+        uploadedAt: new Date(),
       },
       where: {
-        id: document.id
-      }
+        id: document.id,
+      },
     });
 
     await recordAuditLog(tx, {
@@ -633,44 +767,46 @@ export async function markSellerDocumentUploaded(input: {
       afterData: {
         documentId: updatedDocument.id,
         sellerId: document.sellerId,
-        uploadedAt: updatedDocument.uploadedAt?.toISOString() ?? null
+        uploadedAt: updatedDocument.uploadedAt?.toISOString() ?? null,
       },
       entityId: updatedDocument.id,
       entityType: "SellerDocument",
       ipAddress: input.ipAddress,
-      userAgent: input.userAgent
+      userAgent: input.userAgent,
     });
 
     return {
       documentId: updatedDocument.id,
-      uploadedAt: serializeDate(updatedDocument.uploadedAt)
+      uploadedAt: serializeDate(updatedDocument.uploadedAt),
     };
   });
 }
 
-export async function listSellerApprovalQueue(): Promise<SellerApprovalQueueEntry[]> {
+export async function listSellerApprovalQueue(): Promise<
+  SellerApprovalQueueEntry[]
+> {
   const sellers = await prisma.seller.findMany({
     include: {
       documents: {
         orderBy: {
-          createdAt: "desc"
-        }
+          createdAt: "desc",
+        },
       },
-      user: true
+      user: true,
     },
     orderBy: [
       {
-        kycSubmittedAt: "desc"
+        kycSubmittedAt: "desc",
       },
       {
-        updatedAt: "desc"
-      }
+        updatedAt: "desc",
+      },
     ],
     where: {
       kycStatus: {
-        in: [KycStatus.SUBMITTED, KycStatus.REJECTED]
-      }
-    }
+        in: [KycStatus.SUBMITTED, KycStatus.REJECTED],
+      },
+    },
   });
 
   return Promise.all(
@@ -693,9 +829,9 @@ export async function listSellerApprovalQueue(): Promise<SellerApprovalQueueEntr
             id: document.id,
             s3Key: document.s3Key,
             type: document.type,
-            uploadedAt: serializeDate(document.uploadedAt)
+            uploadedAt: serializeDate(document.uploadedAt),
           };
-        })
+        }),
       ),
       id: seller.id,
       kycNotes: seller.kycNotes ?? "",
@@ -712,26 +848,28 @@ export async function listSellerApprovalQueue(): Promise<SellerApprovalQueueEntr
         email: seller.user.email,
         fullName: seller.user.fullName,
         id: seller.user.id,
-        phone: seller.user.phone
-      }
-    }))
+        phone: seller.user.phone,
+      },
+    })),
   );
 }
 
-export async function listRecentSellerAuditActivity(limit = 12): Promise<RecentAuditEntry[]> {
+export async function listRecentSellerAuditActivity(
+  limit = 12,
+): Promise<RecentAuditEntry[]> {
   const entries = await prisma.auditLog.findMany({
     include: {
-      actorUser: true
+      actorUser: true,
     },
     orderBy: {
-      createdAt: "desc"
+      createdAt: "desc",
     },
     take: limit,
     where: {
       entityType: {
-        in: ["Seller", "SellerDocument", "Product"]
-      }
-    }
+        in: ["Seller", "SellerDocument", "Product"],
+      },
+    },
   });
 
   return entries.map((entry) => ({
@@ -740,7 +878,7 @@ export async function listRecentSellerAuditActivity(limit = 12): Promise<RecentA
     createdAt: entry.createdAt.toISOString(),
     entityId: entry.entityId,
     entityType: entry.entityType,
-    id: entry.id
+    id: entry.id,
   }));
 }
 
@@ -753,17 +891,21 @@ export async function decideSellerApproval(input: {
   userAgent?: string | null;
 }) {
   if (input.decision === "REJECT" && !input.note?.trim()) {
-    throw new SellerServiceError("BAD_REQUEST", "A rejection note is required.", 400);
+    throw new SellerServiceError(
+      "BAD_REQUEST",
+      "A rejection note is required.",
+      400,
+    );
   }
 
   return prisma.$transaction(async (tx) => {
     const seller = await tx.seller.findUnique({
       include: {
-        documents: true
+        documents: true,
       },
       where: {
-        id: input.sellerId
-      }
+        id: input.sellerId,
+      },
     });
 
     if (!seller) {
@@ -789,23 +931,24 @@ export async function decideSellerApproval(input: {
           payoutRoutingNumber: seller.payoutRoutingNumber ?? "",
           slug: seller.slug,
           supportEmail: seller.supportEmail ?? "",
-          supportPhone: seller.supportPhone ?? ""
+          supportPhone: seller.supportPhone ?? "",
         },
-        seller.documents.filter((document) => document.uploadedAt !== null).length
+        seller.documents.filter((document) => document.uploadedAt !== null)
+          .length,
       );
 
       if (missingRequirements.length > 0) {
         throw new SellerServiceError(
           "SELLER_ONBOARDING_INCOMPLETE",
           `Seller is not ready for approval: ${missingRequirements.join(", ")}.`,
-          400
+          400,
         );
       }
     }
 
     const beforeData = sellerSnapshot({
       ...seller,
-      documents: seller.documents
+      documents: seller.documents,
     });
 
     const updatedSeller = await tx.seller.update({
@@ -815,37 +958,38 @@ export async function decideSellerApproval(input: {
               kycApprovedAt: new Date(),
               kycNotes: input.note?.trim() || seller.kycNotes,
               kycRejectedAt: null,
-              kycStatus: KycStatus.APPROVED
+              kycStatus: KycStatus.APPROVED,
             }
           : {
               kycApprovedAt: null,
               kycNotes: input.note?.trim() || null,
               kycRejectedAt: new Date(),
-              kycStatus: KycStatus.REJECTED
+              kycStatus: KycStatus.REJECTED,
             },
       where: {
-        id: seller.id
-      }
+        id: seller.id,
+      },
     });
 
     await recordAuditLog(tx, {
-      action: input.decision === "APPROVE" ? "SELLER_APPROVED" : "SELLER_REJECTED",
+      action:
+        input.decision === "APPROVE" ? "SELLER_APPROVED" : "SELLER_REJECTED",
       actorUserId: input.actorUserId,
       afterData: {
         kycNotes: updatedSeller.kycNotes,
         kycStatus: updatedSeller.kycStatus,
-        sellerId: updatedSeller.id
+        sellerId: updatedSeller.id,
       },
       beforeData,
       entityId: updatedSeller.id,
       entityType: "Seller",
       ipAddress: input.ipAddress,
-      userAgent: input.userAgent
+      userAgent: input.userAgent,
     });
 
     return {
       id: updatedSeller.id,
-      kycStatus: updatedSeller.kycStatus
+      kycStatus: updatedSeller.kycStatus,
     };
   });
 }
