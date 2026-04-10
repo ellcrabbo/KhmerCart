@@ -154,7 +154,7 @@ export type BuyerVideoFeedItem = {
     aspectRatio: number | null;
     durationSec: number | null;
     posterUrl: string | null;
-    url: string;
+    url: string | null;
   };
 };
 
@@ -191,7 +191,7 @@ export type SellerVideoPost = {
   video: {
     aspectRatio: number | null;
     durationSec: number | null;
-    url: string;
+    url: string | null;
   };
 };
 
@@ -287,6 +287,27 @@ function normalizeKeySegment(input: string): string {
     .replace(/[^a-z0-9.-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 72);
+}
+
+function looksLikeVideoAsset(key: string): boolean {
+  return /\.(mp4|m4v|mov|webm)$/i.test(key);
+}
+
+async function resolveSignedDownloadUrl(key: string | null | undefined): Promise<string | null> {
+  if (!key) {
+    return null;
+  }
+
+  try {
+    return await createSignedDownloadUrl(key);
+  } catch (error) {
+    console.warn("Unable to sign media download URL", {
+      error: error instanceof Error ? error.message : String(error),
+      key
+    });
+
+    return null;
+  }
 }
 
 function parseFileRole(value: string | undefined): "POSTER" | "VIDEO" {
@@ -454,9 +475,10 @@ async function mapBuyerVideoFeedItem(record: PublicVideoPostRecord): Promise<Buy
   const leadVariant = resolvePublicLeadVariant(record.product);
   const availableQuantity = sumAvailableInventory(record.product);
   const [videoUrl, posterUrl] = await Promise.all([
-    createSignedDownloadUrl(record.videoKey),
-    record.posterKey ? createSignedDownloadUrl(record.posterKey) : Promise.resolve(null)
+    looksLikeVideoAsset(record.videoKey) ? resolveSignedDownloadUrl(record.videoKey) : null,
+    resolveSignedDownloadUrl(record.posterKey)
   ]);
+  const resolvedPosterUrl = posterUrl ?? record.product.images[0]?.url ?? null;
 
   return {
     caption: record.caption,
@@ -493,7 +515,7 @@ async function mapBuyerVideoFeedItem(record: PublicVideoPostRecord): Promise<Buy
     video: {
       aspectRatio: record.aspectRatio ?? null,
       durationSec: record.durationSec ?? null,
-      posterUrl,
+      posterUrl: resolvedPosterUrl,
       url: videoUrl
     }
   };
@@ -501,8 +523,8 @@ async function mapBuyerVideoFeedItem(record: PublicVideoPostRecord): Promise<Buy
 
 async function mapSellerVideoPost(record: SellerVideoPostRecord): Promise<SellerVideoPost> {
   const [videoUrl, posterUrl] = await Promise.all([
-    createSignedDownloadUrl(record.videoKey),
-    record.posterKey ? createSignedDownloadUrl(record.posterKey) : Promise.resolve(null)
+    looksLikeVideoAsset(record.videoKey) ? resolveSignedDownloadUrl(record.videoKey) : null,
+    resolveSignedDownloadUrl(record.posterKey)
   ]);
 
   return {
