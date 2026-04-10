@@ -2,23 +2,26 @@ import type {
   AuthSession,
   BuyerCart,
   BuyerCheckoutResult,
-  BuyerFeedResult,
   BuyerOrderTrackingData,
   BuyerProductDetail,
+  BuyerVideoFeedResult,
   CheckoutAddressInput,
   CreateSellerProductInput,
+  CreateSellerVideoPostInput,
   PaymentMethod,
   RequestOtpResponse,
   SaveSellerOnboardingInput,
   SaveSellerShipmentInput,
   SellerCatalogData,
   SellerDashboardData,
-  SellerShippingQueueData
+  SellerShippingQueueData,
+  SellerVideoPostsData
 } from "./src/api/client";
 import {
+  createSellerVideoPost,
   createSellerProduct,
   getApiBaseUrl,
-  listProducts,
+  listVideoFeed,
   mutateCartItem,
   readBuyerSession,
   readCart,
@@ -28,6 +31,8 @@ import {
   readSellerCatalog,
   readSellerDashboard,
   readSellerShippingQueue,
+  readSellerVideoPosts,
+  requestSellerVideoPostUpload,
   requestOtp,
   resolveAbsoluteUrl,
   saveSellerOnboarding,
@@ -40,11 +45,15 @@ import { CartScreen } from "./src/components/CartScreen";
 import { OrdersScreen } from "./src/components/OrdersScreen";
 import { OrderTrackingScreen } from "./src/components/OrderTrackingScreen";
 import { PaymentResultScreen } from "./src/components/PaymentResultScreen";
-import { ProductCard } from "./src/components/ProductCard";
 import { ProductDetailScreen } from "./src/components/ProductDetailScreen";
 import { SellerCatalogScreen } from "./src/components/SellerCatalogScreen";
 import { SellerOverviewScreen } from "./src/components/SellerOverviewScreen";
+import {
+  SellerPostsScreen,
+  type SellerVideoDraftState
+} from "./src/components/SellerPostsScreen";
 import { SellerShippingScreen } from "./src/components/SellerShippingScreen";
+import { VideoFeedScreen } from "./src/components/VideoFeedScreen";
 import {
   getBuyerDictionary,
   readDefaultBuyerLocale,
@@ -64,6 +73,7 @@ import {
   writeStoredSessionToken
 } from "./src/lib/session";
 import { palette } from "./src/lib/theme";
+import * as ImagePicker from "expo-image-picker";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import {
@@ -81,12 +91,19 @@ import {
   SafeAreaView
 } from "react-native-safe-area-context";
 
-type FeedState = BuyerFeedResult;
+type FeedState = BuyerVideoFeedResult;
 type ShellTab = "home" | "cart" | "orders" | "account";
-type SellerShellTab = "overview" | "catalog" | "shipping";
+type SellerShellTab = "overview" | "catalog" | "posts" | "shipping";
+
+type SelectedUploadAsset = {
+  aspectRatio: number | null;
+  durationSec: number | null;
+  fileName: string;
+  mimeType: string;
+  uri: string;
+};
 
 const emptyFeedState: FeedState = {
-  categories: [],
   items: [],
   nextCursor: null
 };
@@ -151,6 +168,19 @@ const initialSellerProductDraft: CreateSellerProductInput = {
   ]
 };
 
+const initialSellerVideoDraft: SellerVideoDraftState & {
+  posterAsset: SelectedUploadAsset | null;
+  videoAsset: SelectedUploadAsset | null;
+} = {
+  caption: "",
+  posterAsset: null,
+  posterLabel: null,
+  productId: null,
+  status: "DRAFT",
+  videoAsset: null,
+  videoLabel: null
+};
+
 function resolveSessionLabel(session: AuthSession) {
   return session.user.email ?? session.user.phone ?? session.user.id;
 }
@@ -184,6 +214,7 @@ export default function App() {
   const [sellerDashboard, setSellerDashboard] = useState<SellerDashboardData | null>(null);
   const [sellerCatalog, setSellerCatalog] = useState<SellerCatalogData | null>(null);
   const [sellerShipping, setSellerShipping] = useState<SellerShippingQueueData | null>(null);
+  const [sellerVideoPosts, setSellerVideoPosts] = useState<SellerVideoPostsData | null>(null);
   const [isSellerLoading, setIsSellerLoading] = useState(false);
   const [sellerError, setSellerError] = useState<string | null>(null);
   const [sellerMessage, setSellerMessage] = useState<string | null>(null);
@@ -192,11 +223,11 @@ export default function App() {
     useState<SaveSellerOnboardingInput>(initialSellerProfileDraft);
   const [sellerProductDraft, setSellerProductDraft] =
     useState<CreateSellerProductInput>(initialSellerProductDraft);
+  const [sellerVideoDraft, setSellerVideoDraft] = useState(initialSellerVideoDraft);
   const [sellerShipmentDrafts, setSellerShipmentDrafts] = useState<
     Record<string, SaveSellerShipmentInput>
   >({});
 
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [feedState, setFeedState] = useState<FeedState>(emptyFeedState);
   const [isFeedLoading, setIsFeedLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -287,10 +318,11 @@ export default function App() {
 
     void (async () => {
       try {
-        const [dashboard, catalog, shipping] = await Promise.all([
+        const [dashboard, catalog, shipping, posts] = await Promise.all([
           readSellerDashboard(sessionToken),
           readSellerCatalog(sessionToken),
-          readSellerShippingQueue(sessionToken)
+          readSellerShippingQueue(sessionToken),
+          readSellerVideoPosts(sessionToken)
         ]);
 
         if (!isActive) {
@@ -300,6 +332,7 @@ export default function App() {
         setSellerDashboard(dashboard);
         setSellerCatalog(catalog);
         setSellerShipping(shipping);
+        setSellerVideoPosts(posts);
         setSellerProfileDraft({
           businessDescription: dashboard.seller.businessDescription,
           defaultCurrency: dashboard.seller.defaultCurrency,
@@ -326,6 +359,14 @@ export default function App() {
             ])
           )
         );
+        setSellerVideoDraft((current) => ({
+          ...current,
+          productId:
+            current.productId ??
+            catalog.products.find((product) => product.status === "ACTIVE")?.id ??
+            catalog.products[0]?.id ??
+            null
+        }));
       } catch (error) {
         if (isActive) {
           setSellerError(
@@ -409,9 +450,7 @@ export default function App() {
 
     void (async () => {
       try {
-        const payload = await listProducts({
-          category: selectedCategory
-        });
+        const payload = await listVideoFeed();
 
         if (!isActive) {
           return;
@@ -432,7 +471,7 @@ export default function App() {
     return () => {
       isActive = false;
     };
-  }, [dictionary.feedError, selectedCategory]);
+  }, [dictionary.feedError]);
 
   useEffect(() => {
     if (!selectedProductSlug) {
@@ -552,15 +591,17 @@ export default function App() {
     setSellerError(null);
 
     try {
-      const [dashboard, catalog, shipping] = await Promise.all([
+      const [dashboard, catalog, shipping, posts] = await Promise.all([
         readSellerDashboard(token),
         readSellerCatalog(token),
-        readSellerShippingQueue(token)
+        readSellerShippingQueue(token),
+        readSellerVideoPosts(token)
       ]);
 
       setSellerDashboard(dashboard);
       setSellerCatalog(catalog);
       setSellerShipping(shipping);
+      setSellerVideoPosts(posts);
       setSellerProfileDraft({
         businessDescription: dashboard.seller.businessDescription,
         defaultCurrency: dashboard.seller.defaultCurrency,
@@ -587,6 +628,14 @@ export default function App() {
           ])
         )
       );
+      setSellerVideoDraft((current) => ({
+        ...current,
+        productId:
+          current.productId ??
+          catalog.products.find((product) => product.status === "ACTIVE")?.id ??
+          catalog.products[0]?.id ??
+          null
+      }));
     } catch (error) {
       setSellerError(
         error instanceof Error ? error.message : "Unable to refresh seller workspace."
@@ -708,8 +757,10 @@ export default function App() {
     setSellerDashboard(null);
     setSellerCatalog(null);
     setSellerShipping(null);
+    setSellerVideoPosts(null);
     setSellerError(null);
     setSellerMessage(null);
+    setSellerVideoDraft(initialSellerVideoDraft);
   }
 
   function handleChangeSellerProfileField(
@@ -749,6 +800,126 @@ export default function App() {
     setSellerProductDraft((current) => ({
       ...current,
       [field]: value
+    }));
+  }
+
+  function createSelectedUploadAsset(
+    asset: ImagePicker.ImagePickerAsset
+  ): SelectedUploadAsset {
+    const fallbackName = asset.uri.split("/").at(-1) ?? `upload-${Date.now()}`;
+    const width = typeof asset.width === "number" && asset.width > 0 ? asset.width : null;
+    const height = typeof asset.height === "number" && asset.height > 0 ? asset.height : null;
+
+    return {
+      aspectRatio: width && height ? width / height : null,
+      durationSec:
+        typeof asset.duration === "number" && Number.isFinite(asset.duration)
+          ? Math.max(1, Math.round(asset.duration / 1000))
+          : null,
+      fileName: asset.fileName ?? fallbackName,
+      mimeType: asset.mimeType ?? "application/octet-stream",
+      uri: asset.uri
+    };
+  }
+
+  async function pickMediaAsset(mediaType: "images" | "videos") {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      throw new Error("Media library access is required to upload files.");
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: false,
+      mediaTypes: mediaType,
+      quality: 1
+    });
+
+    if (result.canceled || !result.assets[0]) {
+      return null;
+    }
+
+    return createSelectedUploadAsset(result.assets[0]);
+  }
+
+  async function uploadSelectedAsset(
+    token: string,
+    asset: SelectedUploadAsset,
+    fileRole: "POSTER" | "VIDEO"
+  ) {
+    const uploadRequest = await requestSellerVideoPostUpload(token, {
+      contentType: asset.mimeType,
+      fileName: asset.fileName,
+      fileRole
+    });
+    const localResponse = await fetch(asset.uri);
+    const blob = await localResponse.blob();
+    const uploadResponse = await fetch(uploadRequest.uploadUrl, {
+      body: blob,
+      headers: {
+        "Content-Type": asset.mimeType
+      },
+      method: "PUT"
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error(`Unable to upload ${fileRole.toLowerCase()} file.`);
+    }
+
+    return uploadRequest.key;
+  }
+
+  async function handlePickSellerVideo() {
+    try {
+      const asset = await pickMediaAsset("videos");
+
+      if (!asset) {
+        return;
+      }
+
+      setSellerVideoDraft((current) => ({
+        ...current,
+        videoAsset: asset,
+        videoLabel: asset.fileName
+      }));
+      setSellerMessage("Video selected for the next post.");
+      setSellerError(null);
+    } catch (error) {
+      setSellerError(error instanceof Error ? error.message : "Unable to pick a video.");
+    }
+  }
+
+  async function handlePickSellerPoster() {
+    try {
+      const asset = await pickMediaAsset("images");
+
+      if (!asset) {
+        return;
+      }
+
+      setSellerVideoDraft((current) => ({
+        ...current,
+        posterAsset: asset,
+        posterLabel: asset.fileName
+      }));
+      setSellerMessage("Poster selected for the next post.");
+      setSellerError(null);
+    } catch (error) {
+      setSellerError(error instanceof Error ? error.message : "Unable to pick a poster.");
+    }
+  }
+
+  function handleChangeSellerVideoCaption(value: string) {
+    setSellerVideoDraft((current) => ({
+      ...current,
+      caption: value
+    }));
+  }
+
+  function handleSelectSellerVideoProduct(productId: string) {
+    setSellerVideoDraft((current) => ({
+      ...current,
+      productId
     }));
   }
 
@@ -816,6 +987,70 @@ export default function App() {
     }
   }
 
+  async function handleCreateSellerVideoPost(
+    status: CreateSellerVideoPostInput["status"]
+  ) {
+    if (!sessionToken) {
+      return;
+    }
+
+    if (!sellerVideoDraft.videoAsset) {
+      setSellerError("Select a video before saving a post.");
+      return;
+    }
+
+    if (!sellerVideoDraft.productId) {
+      setSellerError("Attach a product before saving a post.");
+      return;
+    }
+
+    if (!sellerVideoDraft.caption.trim()) {
+      setSellerError("Add a caption before saving a post.");
+      return;
+    }
+
+    setIsSellerSaving(true);
+    setSellerError(null);
+    setSellerMessage(null);
+
+    try {
+      const [videoKey, posterKey] = await Promise.all([
+        uploadSelectedAsset(sessionToken, sellerVideoDraft.videoAsset, "VIDEO"),
+        sellerVideoDraft.posterAsset
+          ? uploadSelectedAsset(sessionToken, sellerVideoDraft.posterAsset, "POSTER")
+          : Promise.resolve(null)
+      ]);
+
+      await createSellerVideoPost(sessionToken, {
+        aspectRatio: sellerVideoDraft.videoAsset.aspectRatio,
+        caption: sellerVideoDraft.caption.trim(),
+        durationSec: sellerVideoDraft.videoAsset.durationSec,
+        posterKey,
+        productId: sellerVideoDraft.productId,
+        status,
+        videoKey
+      });
+      await refreshSellerWorkspace(sessionToken);
+      setSellerVideoDraft((current) => ({
+        ...initialSellerVideoDraft,
+        productId:
+          current.productId ??
+          sellerCatalog?.products.find((product) => product.status === "ACTIVE")?.id ??
+          sellerCatalog?.products[0]?.id ??
+          null
+      }));
+      setSellerMessage(
+        status === "PUBLISHED" ? "Video post published." : "Video post saved as draft."
+      );
+    } catch (error) {
+      setSellerError(
+        error instanceof Error ? error.message : "Unable to create seller video post."
+      );
+    } finally {
+      setIsSellerSaving(false);
+    }
+  }
+
   async function handleSaveSellerShipment(
     orderId: string,
     status?: "HANDED_TO_CARRIER" | "IN_TRANSIT" | "DELIVERED"
@@ -853,13 +1088,11 @@ export default function App() {
     setFeedError(null);
 
     try {
-      const payload = await listProducts({
-        category: selectedCategory,
+      const payload = await listVideoFeed({
         cursor: feedState.nextCursor
       });
 
       setFeedState((current) => ({
-        categories: payload.categories,
         items: [...current.items, ...payload.items],
         nextCursor: payload.nextCursor
       }));
@@ -1169,163 +1402,15 @@ export default function App() {
 
   function renderHomeTab() {
     return (
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.hero}>
-          <View style={styles.heroPanel}>
-            <Text style={styles.heroEyebrow}>KhmerCart Mobile</Text>
-            <Text style={styles.heroTitle}>{dictionary.heroTitle}</Text>
-            <Text style={styles.heroBody}>{dictionary.heroBody}</Text>
-
-            <View style={styles.quickStatsRow}>
-              <View style={styles.quickStatCard}>
-                <Text style={styles.quickStatLabel}>{dictionary.tabBag}</Text>
-                <Text style={styles.quickStatValue}>{cart.itemCount}</Text>
-              </View>
-
-              <View style={styles.quickStatCard}>
-                <Text style={styles.quickStatLabel}>{dictionary.ordersTab}</Text>
-                <Text style={styles.quickStatValue}>
-                  {isRestoringRecentOrders ? "..." : recentOrders.length}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.storefrontNoteCard}>
-            <Text style={styles.storefrontNoteText}>{dictionary.storefrontNote}</Text>
-          </View>
-
-          {session ? (
-            <View style={styles.sessionSummaryCard}>
-              <View style={styles.sessionSummaryCopy}>
-                <Text style={styles.sectionEyebrow}>{dictionary.authTitle}</Text>
-                <Text style={styles.sessionSummaryValue}>
-                  {resolveSessionLabel(session)}
-                </Text>
-              </View>
-
-              <View style={styles.sessionSummaryActions}>
-                <Pressable onPress={handleOpenOrdersTab} style={styles.summaryGhostButton}>
-                  <Text style={styles.summaryGhostButtonText}>{dictionary.ordersTab}</Text>
-                </Pressable>
-
-                <Pressable onPress={handleOpenCart} style={styles.summaryPrimaryButton}>
-                  <Text style={styles.summaryPrimaryButtonText}>
-                    {dictionary.openCart} {cart.itemCount > 0 ? `(${cart.itemCount})` : ""}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.restoreCard}>
-              <View style={styles.restoreCopy}>
-                <Text style={styles.restoreTitle}>{dictionary.signInRequired}</Text>
-                <Text style={styles.restoreText}>{dictionary.signInToShop}</Text>
-              </View>
-              <Pressable
-                onPress={() => setActiveTab("account")}
-                style={styles.summaryPrimaryButton}
-              >
-                <Text style={styles.summaryPrimaryButtonText}>{dictionary.goToAccount}</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionEyebrow}>{dictionary.featuredNow}</Text>
-            <Text style={styles.sectionTitle}>{dictionary.browseTitle}</Text>
-          </View>
-        </View>
-
-        <ScrollView
-          contentContainerStyle={styles.categoryRow}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-        >
-          <Pressable
-            onPress={() => setSelectedCategory(null)}
-            style={[
-              styles.categoryChip,
-              selectedCategory === null ? styles.categoryChipSelected : null
-            ]}
-          >
-            <Text
-              style={[
-                styles.categoryChipText,
-                selectedCategory === null ? styles.categoryChipTextSelected : null
-              ]}
-            >
-              {dictionary.allCategories}
-            </Text>
-          </Pressable>
-
-          {feedState.categories.map((category) => {
-            const isSelected = selectedCategory === category;
-
-            return (
-              <Pressable
-                key={category}
-                onPress={() => setSelectedCategory(category)}
-                style={[
-                  styles.categoryChip,
-                  isSelected ? styles.categoryChipSelected : null
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.categoryChipText,
-                    isSelected ? styles.categoryChipTextSelected : null
-                  ]}
-                >
-                  {category}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        {feedError ? <Text style={styles.errorBanner}>{feedError}</Text> : null}
-
-        {isFeedLoading ? (
-          <View style={styles.loadingState}>
-            <ActivityIndicator color={palette.accent} size="large" />
-            <Text style={styles.loadingText}>{dictionary.feedLoading}</Text>
-          </View>
-        ) : null}
-
-        {!isFeedLoading && feedState.items.length === 0 ? (
-          <Text style={styles.emptyState}>{dictionary.feedEmpty}</Text>
-        ) : null}
-
-        <View style={styles.productList}>
-          {feedState.items.map((item) => (
-            <ProductCard
-              key={item.id}
-              item={item}
-              locale={locale}
-              onPress={() => setSelectedProductSlug(item.slug)}
-            />
-          ))}
-        </View>
-
-        {feedState.nextCursor ? (
-          <Pressable
-            onPress={handleLoadMore}
-            style={({ pressed }) => [
-              styles.loadMoreButton,
-              pressed ? styles.buttonPressed : null
-            ]}
-          >
-            {isLoadingMore ? (
-              <ActivityIndicator color={palette.card} />
-            ) : (
-              <Text style={styles.loadMoreText}>{dictionary.loadMore}</Text>
-            )}
-          </Pressable>
-        ) : null}
-      </ScrollView>
+      <VideoFeedScreen
+        errorMessage={feedError}
+        isLoading={isFeedLoading}
+        isLoadingMore={isLoadingMore}
+        items={feedState.items}
+        locale={locale}
+        onEndReached={handleLoadMore}
+        onOpenProduct={setSelectedProductSlug}
+      />
     );
   }
 
@@ -1445,6 +1530,27 @@ export default function App() {
           statusMessage={sellerMessage}
           onChangeDraft={handleChangeSellerShipmentDraft}
           onSaveOrder={handleSaveSellerShipment}
+        />
+      );
+    }
+
+    if (sellerTab === "posts") {
+      return (
+        <SellerPostsScreen
+          catalog={sellerCatalog}
+          draft={sellerVideoDraft}
+          errorMessage={sellerError}
+          isCreating={isSellerSaving}
+          isLoading={isSellerLoading}
+          locale={locale}
+          message={sellerMessage}
+          posts={sellerVideoPosts}
+          onChangeCaption={handleChangeSellerVideoCaption}
+          onPickPoster={() => void handlePickSellerPoster()}
+          onPickVideo={() => void handlePickSellerVideo()}
+          onPublish={() => void handleCreateSellerVideoPost("PUBLISHED")}
+          onSaveDraft={() => void handleCreateSellerVideoPost("DRAFT")}
+          onSelectProduct={handleSelectSellerVideoProduct}
         />
       );
     }
@@ -1574,6 +1680,7 @@ export default function App() {
             <View style={styles.tabBar}>
               {renderSellerTabButton("overview", dictionary.sellerOverviewTab)}
               {renderSellerTabButton("catalog", dictionary.sellerCatalogTab)}
+              {renderSellerTabButton("posts", dictionary.sellerPostsTab)}
               {renderSellerTabButton("shipping", dictionary.sellerShippingTab)}
               <Pressable
                 onPress={() => setIsSellerMode(false)}

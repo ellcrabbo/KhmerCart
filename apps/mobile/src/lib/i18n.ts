@@ -100,7 +100,9 @@ type MobileDictionary = {
   signInToShop: string;
   signOut: string;
   sellerCatalogTab: string;
+  sellerCaption: string;
   sellerCenter: string;
+  sellerCreateVideoPost: string;
   sellerCreateListing: string;
   sellerDefaultCurrency: string;
   sellerDescription: string;
@@ -119,10 +121,20 @@ type MobileDictionary = {
   sellerPayoutBank: string;
   sellerPayoutName: string;
   sellerPayoutNumber: string;
+  sellerPickPoster: string;
+  sellerPickVideo: string;
   sellerPriceMinor: string;
   sellerProductName: string;
+  sellerAttachedProduct: string;
+  sellerPostsBody: string;
+  sellerPostsTab: string;
+  sellerNoPosterSelected: string;
+  sellerNoPosts: string;
+  sellerNoVideoSelected: string;
+  sellerPublishVideoPost: string;
   sellerQuickListingBody: string;
   sellerSaveProfile: string;
+  sellerSaveVideoDraft: string;
   sellerShippingTab: string;
   sellerSlug: string;
   sellerSupportEmail: string;
@@ -143,6 +155,9 @@ type MobileDictionary = {
   trackingNumber: string;
   trackingTitle: string;
   variantLabel: string;
+  videoFeedBuyNow: string;
+  videoFeedEmpty: string;
+  videoFeedLoading: string;
   verifyOtp: string;
   viewStorefront: string;
 };
@@ -164,7 +179,7 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     backToFeed: "Back to discovery",
     backToPayment: "Back to payment",
     billingSameAsShipping: "Billing address uses the same details for now.",
-    browseTitle: "Discovery feed",
+    browseTitle: "Shoppable video feed",
     cartEmpty: "Your cart is empty. Add a product to start checkout.",
     cartLoading: "Refreshing your cart...",
     cartTitle: "Cart and checkout",
@@ -193,8 +208,8 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     goToAccount: "Open account",
     homeTab: "Home",
     heroBody:
-      "Browse active KhmerCart listings with visible disclosures, live variant stock, and seller context built in.",
-    heroTitle: "Find goods that feel local, useful, and ready to ship.",
+      "Swipe through seller videos, jump into the product instantly, and keep the checkout loop fast enough for impulse shopping.",
+    heroTitle: "Cambodian commerce should feel like content, not a catalog.",
     identifierPlaceholder: "Email address or phone number",
     itemQuantity: "Qty",
     itemsLabel: "items",
@@ -246,7 +261,9 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     signInToShop: "Sign in to unlock bag, checkout, and order tracking on this device.",
     signOut: "Sign out",
     sellerCatalogTab: "Catalog",
+    sellerCaption: "Caption and selling hook",
     sellerCenter: "Seller Center",
+    sellerCreateVideoPost: "Create shoppable post",
     sellerCreateListing: "Create listing",
     sellerDefaultCurrency: "Default currency",
     sellerDescription: "Business description",
@@ -266,11 +283,22 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     sellerPayoutBank: "Payout bank",
     sellerPayoutName: "Payout account name",
     sellerPayoutNumber: "Payout account number",
+    sellerPickPoster: "Pick poster",
+    sellerPickVideo: "Pick video",
     sellerPriceMinor: "Price (minor units)",
     sellerProductName: "Product name",
+    sellerAttachedProduct: "Attach product",
+    sellerPostsBody:
+      "Upload a vertical clip, attach one approved product, and publish it into the buyer video feed.",
+    sellerPostsTab: "Posts",
+    sellerNoPosterSelected: "No poster selected yet.",
+    sellerNoPosts: "No shoppable posts yet. Publish one clip to start the feed.",
+    sellerNoVideoSelected: "No video selected yet.",
+    sellerPublishVideoPost: "Publish post",
     sellerQuickListingBody:
       "Start with one fast listing: title, category, price, stock, and support contact.",
     sellerSaveProfile: "Save profile",
+    sellerSaveVideoDraft: "Save draft",
     sellerShippingTab: "Shipping",
     sellerSlug: "Store slug",
     sellerSupportEmail: "Support email",
@@ -282,7 +310,7 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     stateProvince: "State / province",
     stockUnits: "units",
     storefrontNote:
-      "A native buyer shell for KhmerCart that talks to the shared API instead of embedding the web app.",
+      "A native buyer shell for KhmerCart that should eventually feel closer to TikTok Shop than a conventional storefront.",
     subtotal: "Subtotal",
     shipmentStatusLabel: "Shipment status",
     tabBag: "Bag",
@@ -292,6 +320,9 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     trackingNumber: "Tracking number",
     trackingTitle: "Order tracking",
     variantLabel: "Variants",
+    videoFeedBuyNow: "Open product",
+    videoFeedEmpty: "No video posts are live yet.",
+    videoFeedLoading: "Loading video feed...",
     verifyOtp: "Verify OTP",
     viewStorefront: "Back to storefront"
   },
@@ -311,7 +342,7 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     backToFeed: "ត្រឡប់ទៅការរកមើល",
     backToPayment: "ត្រឡប់ទៅការទូទាត់",
     billingSameAsShipping: "អាសយដ្ឋានវិក្កយបត្រប្រើព័ត៌មានដូចអាសយដ្ឋានដឹកជញ្ជូនសិន។",
-    browseTitle: "បញ្ជីស្វែងរក",
+    browseTitle: "បញ្ជីវីដេអូលក់ទំនិញ",
     cartEmpty: "កន្ត្រកទំនិញទទេ។ បន្ថែមទំនិញមុនពេល checkout។",
     cartLoading: "កំពុងធ្វើបច្ចុប្បន្នកន្ត្រក...",
     cartTitle: "កន្ត្រក និង checkout",
@@ -340,8 +371,8 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     goToAccount: "បើកផ្ទាំងគណនី",
     homeTab: "ដើម",
     heroBody:
-      "ស្វែងរកទំនិញ KhmerCart ដែលកំពុងដាក់លក់ជាមួយព័ត៌មានបង្ហាញ ស្តុកវ៉ារ្យ៉ង់ និងព័ត៌មានអ្នកលក់ច្បាស់លាស់។",
-    heroTitle: "ស្វែងរកទំនិញដែលមានប្រយោជន៍ ស្ទាយក្នុងស្រុក និងរួចរាល់សម្រាប់ដឹកជញ្ជូន។",
+      "អូសមើលវីដេអូពីអ្នកលក់ បើកទំនិញភ្លាមៗ ហើយរក្សា checkout ឱ្យលឿនសម្រាប់ការទិញបែប impulse shopping។",
+    heroTitle: "ពាណិជ្ជកម្មកម្ពុជាគួរតែមានអារម្មណ៍ដូច content មិនមែនកាតាឡុកធម្មតា។",
     identifierPlaceholder: "អ៊ីមែល ឬ លេខទូរស័ព្ទ",
     itemQuantity: "ចំនួន",
     itemsLabel: "មុខទំនិញ",
@@ -393,7 +424,9 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     signInToShop: "សូមចូលគណនី ដើម្បីប្រើកន្ត្រក checkout និងតាមដានការបញ្ជាទិញនៅលើឧបករណ៍នេះ។",
     signOut: "ចេញ",
     sellerCatalogTab: "កាតាឡុក",
+    sellerCaption: "Caption និង hook លក់",
     sellerCenter: "ផ្ទាំងអ្នកលក់",
+    sellerCreateVideoPost: "បង្កើត post ទំនិញ",
     sellerCreateListing: "បង្កើតទំនិញ",
     sellerDefaultCurrency: "រូបិយប័ណ្ណលំនាំដើម",
     sellerDescription: "ពិពណ៌នាអាជីវកម្ម",
@@ -413,11 +446,22 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     sellerPayoutBank: "ធនាគារទទួលប្រាក់",
     sellerPayoutName: "ឈ្មោះគណនីទទួលប្រាក់",
     sellerPayoutNumber: "លេខគណនីទទួលប្រាក់",
+    sellerPickPoster: "ជ្រើស poster",
+    sellerPickVideo: "ជ្រើសវីដេអូ",
     sellerPriceMinor: "តម្លៃ (ឯកតាតូច)",
     sellerProductName: "ឈ្មោះទំនិញ",
+    sellerAttachedProduct: "ភ្ជាប់ទំនិញ",
+    sellerPostsBody:
+      "ផ្ទុកឡើងវីដេអូបញ្ឈរ ភ្ជាប់ទំនិញមួយ ហើយបង្ហោះវាចូលទៅក្នុង buyer video feed។",
+    sellerPostsTab: "Posts",
+    sellerNoPosterSelected: "មិនទាន់បានជ្រើស poster ទេ។",
+    sellerNoPosts: "មិនទាន់មាន shoppable post ទេ។",
+    sellerNoVideoSelected: "មិនទាន់បានជ្រើសវីដេអូទេ។",
+    sellerPublishVideoPost: "បង្ហោះ post",
     sellerQuickListingBody:
       "ចាប់ផ្តើមដោយបង្កើត listing មួយឱ្យលឿន៖ ចំណងជើង ប្រភេទ តម្លៃ ស្តុក និងទំនាក់ទំនងគាំទ្រ។",
     sellerSaveProfile: "រក្សាទុក profile",
+    sellerSaveVideoDraft: "រក្សាទុក draft",
     sellerShippingTab: "ដឹកជញ្ជូន",
     sellerSlug: "slug ហាង",
     sellerSupportEmail: "អ៊ីមែលគាំទ្រ",
@@ -429,7 +473,7 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     stateProvince: "រដ្ឋ / ខេត្ត",
     stockUnits: "ឯកតា",
     storefrontNote:
-      "buyer app ជា native សម្រាប់ KhmerCart ដែលភ្ជាប់ទៅ API ដូចគ្នា ហើយរក្សាទម្រង់ discovery បច្ចុប្បន្ន។",
+      "buyer app ជា native shell សម្រាប់ KhmerCart ដែលគួរតែទៅជាបទពិសោធន៍ video-first ដូច TikTok Shop។",
     subtotal: "សរុបរង",
     shipmentStatusLabel: "ស្ថានភាពដឹកជញ្ជូន",
     tabBag: "កន្ត្រក",
@@ -439,6 +483,9 @@ const dictionaries: Record<BuyerLocale, MobileDictionary> = {
     trackingNumber: "លេខតាមដាន",
     trackingTitle: "តាមដានការបញ្ជាទិញ",
     variantLabel: "វ៉ារ្យ៉ង់",
+    videoFeedBuyNow: "បើកទំនិញ",
+    videoFeedEmpty: "មិនទាន់មាន video post ដាក់ផ្សាយទេ។",
+    videoFeedLoading: "កំពុងទាញ video feed...",
     verifyOtp: "បញ្ជាក់ OTP",
     viewStorefront: "ត្រឡប់ទៅហាង"
   }

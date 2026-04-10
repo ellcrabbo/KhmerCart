@@ -53,6 +53,12 @@ enum ProductModerationStatus {
   REJECTED
 }
 
+enum VideoPostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
 enum PaymentMethod {
   COD
   KHQR
@@ -246,6 +252,7 @@ model Seller {
   documents           SellerDocument[]
   inventories         Inventory[]
   orders              Order[]
+  videoPosts          VideoPost[]
   shipments           Shipment[]
   ledgerAccounts      LedgerAccount[]
   payoutBatches       PayoutBatch[]
@@ -291,6 +298,7 @@ model Product {
   seller           Seller                  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   images           ProductImage[]
   variants         ProductVariant[]
+  videoPosts       VideoPost[]
   cartItems        CartItem[]
   orderItems       OrderItem[]
 
@@ -351,6 +359,27 @@ model ProductImage {
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId, position])
+}
+
+model VideoPost {
+  id          String          @id @default(cuid())
+  sellerId    String
+  productId   String
+  caption     String
+  videoKey    String          @unique
+  posterKey   String?
+  durationSec Int?
+  aspectRatio Float?
+  status      VideoPostStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  seller      Seller          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  product     Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId, status])
+  @@index([publishedAt, id])
+  @@index([productId, status])
 }
 
 model Cart {

@@ -108,6 +108,59 @@ export type BuyerFeedResult = {
   nextCursor: string | null
 }
 
+export type BuyerVideoFeedItem = {
+  caption: string
+  id: string
+  product: {
+    category: string
+    description: string
+    featuredImageUrl: string | null
+    id: string
+    leadVariant: {
+      availableQuantity: number
+      compareAtPriceMinor: number | null
+      currency: Currency
+      id: string
+      name: string
+      priceMinor: number
+      sku: string
+    }
+    name: string
+    pricing: {
+      compareAtPriceMinor: number | null
+      currency: Currency
+      priceMinor: number
+    }
+    seller: {
+      contact: string
+      displayName: string
+      slug: string
+    }
+    slug: string
+    stock: {
+      availableQuantity: number
+      state: BuyerStockState
+    }
+  }
+  publishedAt: string
+  seller: {
+    contact: string
+    displayName: string
+    slug: string
+  }
+  video: {
+    aspectRatio: number | null
+    durationSec: number | null
+    posterUrl: string | null
+    url: string
+  }
+}
+
+export type BuyerVideoFeedResult = {
+  items: BuyerVideoFeedItem[]
+  nextCursor: string | null
+}
+
 export type BuyerProductDetail = BuyerFeedItem & {
   disclosures: {
     returnPolicy: string
@@ -374,6 +427,44 @@ export type SellerShippingQueueData = {
   }>
 }
 
+export type SellerVideoPost = {
+  caption: string
+  createdAt: string
+  id: string
+  posterUrl: string | null
+  product: {
+    currency: Currency | null
+    id: string
+    moderationStatus: string
+    name: string
+    priceMinor: number | null
+    publishedAt: string | null
+    slug: string
+    status: string
+  }
+  publishedAt: string | null
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
+  updatedAt: string
+  video: {
+    aspectRatio: number | null
+    durationSec: number | null
+    url: string
+  }
+}
+
+export type SellerVideoPostsData = {
+  posts: SellerVideoPost[]
+  sellerCanPublishPosts: boolean
+  sellerId: string | null
+}
+
+export type SellerVideoPostUploadRequest = {
+  expiresInSeconds: number
+  fileRole: "POSTER" | "VIDEO"
+  key: string
+  uploadUrl: string
+}
+
 export type CheckoutConfigResponse = {
   paymentMethods: PaymentMethod[]
 }
@@ -440,6 +531,22 @@ export type SaveSellerShipmentInput = {
   status?: string | null
   trackingNumber?: string | null
   trackingUrl?: string | null
+}
+
+export type CreateSellerVideoPostInput = {
+  aspectRatio?: number | null
+  caption?: string | null
+  durationSec?: number | null
+  posterKey?: string | null
+  productId?: string | null
+  status?: "DRAFT" | "PUBLISHED" | "ARCHIVED" | null
+  videoKey?: string | null
+}
+
+export type RequestSellerVideoPostUploadInput = {
+  contentType?: string | null
+  fileName?: string | null
+  fileRole?: "POSTER" | "VIDEO" | null
 }
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:3002"
@@ -574,6 +681,25 @@ export async function readProduct(slug: string) {
   return requestJson<BuyerProductDetail>(`/api/products/${encodeURIComponent(slug)}`)
 }
 
+export async function listVideoFeed(input?: {
+  cursor?: string | null
+  limit?: number | null
+}) {
+  const searchParams = new URLSearchParams()
+
+  if (input?.cursor) {
+    searchParams.set("cursor", input.cursor)
+  }
+
+  if (typeof input?.limit === "number") {
+    searchParams.set("limit", String(input.limit))
+  }
+
+  const suffix = searchParams.toString()
+
+  return requestJson<BuyerVideoFeedResult>(`/api/video-feed${suffix ? `?${suffix}` : ""}`)
+}
+
 export async function readCart(token: string) {
   return requestJson<BuyerCart>("/api/cart", {
     token
@@ -646,6 +772,31 @@ export async function createSellerProduct(token: string, input: CreateSellerProd
 
 export async function readSellerShippingQueue(token: string) {
   return requestSellerJson<SellerShippingQueueData>("/api/shipping", {
+    token
+  })
+}
+
+export async function readSellerVideoPosts(token: string) {
+  return requestSellerJson<SellerVideoPostsData>("/api/video-posts", {
+    token
+  })
+}
+
+export async function requestSellerVideoPostUpload(
+  token: string,
+  input: RequestSellerVideoPostUploadInput
+) {
+  return requestSellerJson<SellerVideoPostUploadRequest>("/api/video-posts/upload-url", {
+    body: input,
+    method: "POST",
+    token
+  })
+}
+
+export async function createSellerVideoPost(token: string, input: CreateSellerVideoPostInput) {
+  return requestSellerJson<SellerVideoPost>("/api/video-posts", {
+    body: input,
+    method: "POST",
     token
   })
 }

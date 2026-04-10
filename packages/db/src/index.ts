@@ -12,3 +12,4 @@ export * from "./prisma";
 export * from "./seller";
 export * from "./shipping";
 export * from "./storage";
+export * from "./video-posts";
