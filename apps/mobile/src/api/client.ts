@@ -211,6 +211,13 @@ export type ProductReviewSummary = {
   reviewCount: number
 }
 
+export type EligibleProductReviewOrder = {
+  deliveredAt: string | null
+  orderId: string
+  orderNumber: string
+  sellerDisplayName: string
+}
+
 export type SavedProductEntry = {
   createdAt: string
   id: string
@@ -326,7 +333,14 @@ export type BuyerCheckoutPayment = {
 
 export type BuyerCheckoutResult = {
   billingAddress: CheckoutAddress
+  coupon: {
+    code: string
+    discountMinor: number
+    id: string
+    title: string
+  } | null
   currency: Currency
+  discountMinor: number
   idempotencyKey: string
   itemCount: number
   orderId: string
@@ -338,8 +352,29 @@ export type BuyerCheckoutResult = {
     id: string
     slug: string
   }
+  shippingMinor: number
   shippingAddress: CheckoutAddress
   state: OrderLifecycleState
+  subtotalMinor: number
+  totalMinor: number
+}
+
+export type BuyerCheckoutPreview = {
+  coupon: {
+    code: string
+    discountMinor: number
+    id: string
+    title: string
+  } | null
+  currency: Currency
+  discountMinor: number
+  itemCount: number
+  seller: {
+    displayName: string
+    id: string
+    slug: string
+  }
+  shippingMinor: number
   subtotalMinor: number
   totalMinor: number
 }
@@ -575,6 +610,7 @@ type MutateCartItemInput = {
 
 type SubmitCheckoutInput = {
   billingAddress?: CheckoutAddressInput | null
+  couponCode?: string | null
   notes?: string | null
   paymentMethod?: PaymentMethod | null
   shippingAddress: CheckoutAddressInput
@@ -846,6 +882,19 @@ export async function submitCheckout(
   })
 }
 
+export async function previewCheckout(
+  token: string,
+  input: {
+    couponCode?: string | null
+  }
+) {
+  return requestJson<BuyerCheckoutPreview>("/api/checkout", {
+    body: input,
+    method: "PATCH",
+    token
+  })
+}
+
 export async function readOrderTracking(token: string, orderId: string) {
   return requestJson<BuyerOrderTrackingData>(
     `/api/buyer/orders/${encodeURIComponent(orderId)}`,
@@ -934,6 +983,15 @@ export async function recordVideoFeedMetric(
 
 export async function readProductReviews(slug: string) {
   return requestJson<ProductReviewSummary>(`/api/products/${encodeURIComponent(slug)}/reviews`)
+}
+
+export async function readProductReviewEligibility(token: string, slug: string) {
+  return requestJson<EligibleProductReviewOrder[]>(
+    `/api/products/${encodeURIComponent(slug)}/review-eligibility`,
+    {
+      token
+    }
+  )
 }
 
 export async function createProductReview(

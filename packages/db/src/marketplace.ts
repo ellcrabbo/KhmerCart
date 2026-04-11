@@ -28,6 +28,13 @@ export type ProductReviewSummary = {
   reviewCount: number;
 };
 
+export type EligibleProductReviewOrder = {
+  deliveredAt: string | null;
+  orderId: string;
+  orderNumber: string;
+  sellerDisplayName: string;
+};
+
 export type SellerRatingSummary = {
   averageRating: number;
   reviewCount: number;
@@ -197,6 +204,48 @@ export async function getSellerRatingSummary(
     averageRating: aggregate?.averageRating ?? 0,
     reviewCount: aggregate?.reviewCount ?? 0,
   };
+}
+
+export async function listEligibleProductReviewOrders(input: {
+  buyerId: string;
+  productId: string;
+}): Promise<EligibleProductReviewOrder[]> {
+  const orders = await prisma.order.findMany({
+    orderBy: [{ updatedAt: "desc" }],
+    select: {
+      completedAt: true,
+      id: true,
+      orderNumber: true,
+      seller: {
+        select: {
+          displayName: true,
+        },
+      },
+      shipment: {
+        select: {
+          deliveredAt: true,
+        },
+      },
+    },
+    where: {
+      buyerId: input.buyerId,
+      items: {
+        some: {
+          productId: input.productId,
+        },
+      },
+      state: {
+        in: ["DELIVERED", "COMPLETED"],
+      },
+    },
+  });
+
+  return orders.map((order) => ({
+    deliveredAt: serializeDate(order.shipment?.deliveredAt ?? order.completedAt ?? null),
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    sellerDisplayName: order.seller.displayName,
+  }));
 }
 
 export async function createProductReview(input: {

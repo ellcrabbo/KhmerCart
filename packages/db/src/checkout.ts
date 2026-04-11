@@ -21,6 +21,7 @@ import {
   UserRole
 } from "./prisma-client"
 import type { Currency } from "./prisma-client"
+import { estimateShippingPreview, previewCouponForSeller } from "./marketplace"
 import { createCheckoutPaymentRecord } from "./payments"
 import { appendOrderEventInTransaction } from "./orders"
 import { prisma } from "./prisma"
@@ -139,6 +140,7 @@ export type MutateBuyerCartItemInput = {
 
 export type CheckoutBuyerCartInput = {
   billingAddress?: CheckoutAddressInput | null
+  couponCode?: string | null
   idempotencyKey: string
   notes?: string | null
   paymentMethod?: string | null
@@ -148,7 +150,14 @@ export type CheckoutBuyerCartInput = {
 
 export type BuyerCheckoutResult = {
   billingAddress: CheckoutAddress
+  coupon: {
+    code: string
+    discountMinor: number
+    id: string
+    title: string
+  } | null
   currency: Currency
+  discountMinor: number
   idempotencyKey: string
   itemCount: number
   orderId: string
@@ -160,8 +169,29 @@ export type BuyerCheckoutResult = {
     id: string
     slug: string
   }
+  shippingMinor: number
   shippingAddress: CheckoutAddress
   state: OrderState
+  subtotalMinor: number
+  totalMinor: number
+}
+
+export type CheckoutPreviewResult = {
+  coupon: {
+    code: string
+    discountMinor: number
+    id: string
+    title: string
+  } | null
+  currency: Currency
+  discountMinor: number
+  itemCount: number
+  seller: {
+    displayName: string
+    id: string
+    slug: string
+  }
+  shippingMinor: number
   subtotalMinor: number
   totalMinor: number
 }
@@ -321,6 +351,7 @@ function stableStringify(value: unknown): string {
 
 function createCheckoutRequestHash(input: {
   billingAddress: CheckoutAddress
+  couponCode: string
   notes: string
   paymentMethod: PaymentMethod
   shippingAddress: CheckoutAddress
@@ -624,6 +655,79 @@ function parseStoredCheckoutResponse(value: Prisma.JsonValue | null): BuyerCheck
   return value as unknown as BuyerCheckoutResult
 }
 
+async function loadCheckoutCartContext(
+  tx: Prisma.TransactionClient | typeof prisma,
+  userId: string
+) {
+  const cart = await getCheckoutCartRecord(tx, userId)
+
+  if (!cart) {
+    throw new CheckoutServiceError("CART_EMPTY", "Cart is empty.", 400)
+  }
+
+  assertCartConsistency(cart.items)
+
+  const lineItems = buildCheckoutLineItems(cart.items)
+  const subtotalMinor = lineItems.reduce(
+    (runningTotal, lineItem) => runningTotal + lineItem.subtotalMinor,
+    0
+  )
+  const currency = lineItems[0]?.currency
+  const seller = cart.items[0]?.product.seller
+
+  if (!currency || !seller) {
+    throw new CheckoutServiceError(
+      "CART_ITEM_UNAVAILABLE",
+      "Cart contains unavailable items.",
+      409
+    )
+  }
+
+  return {
+    cart,
+    currency,
+    lineItems,
+    seller,
+    subtotalMinor
+  }
+}
+
+export async function previewBuyerCheckout(input: {
+  couponCode?: string | null
+  userId: string
+}): Promise<CheckoutPreviewResult> {
+  await getBuyerUser(input.userId)
+  const { cart, currency, seller, subtotalMinor } = await loadCheckoutCartContext(prisma, input.userId)
+  const coupon = input.couponCode?.trim()
+    ? await previewCouponForSeller({
+        code: input.couponCode,
+        sellerId: seller.id,
+        subtotalMinor
+      })
+    : null
+  const shipping = estimateShippingPreview({
+    currency,
+    itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0)
+  })
+  const discountMinor = Math.min(subtotalMinor, coupon?.discountMinor ?? 0)
+  const totalMinor = Math.max(0, subtotalMinor + shipping.estimatedMinor - discountMinor)
+
+  return {
+    coupon,
+    currency,
+    discountMinor,
+    itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+    seller: {
+      displayName: seller.displayName,
+      id: seller.id,
+      slug: seller.slug
+    },
+    shippingMinor: shipping.estimatedMinor,
+    subtotalMinor,
+    totalMinor
+  }
+}
+
 export async function getBuyerCart(input: { userId: string }): Promise<BuyerCart> {
   await getBuyerUser(input.userId)
 
@@ -731,6 +835,7 @@ export async function checkoutBuyerCart(
   const checkoutConfig = readCheckoutConfig(process.env)
   const shippingAddress = normalizeCheckoutAddress(input.shippingAddress)
   const billingAddress = normalizeCheckoutAddress(input.billingAddress ?? input.shippingAddress)
+  const couponCode = input.couponCode?.trim() ?? ""
   const notes = normalizeNotes(input.notes)
   const requestedPaymentMethod = input.paymentMethod?.trim().toUpperCase()
   const paymentMethod = normalizePaymentMethod(
@@ -775,6 +880,7 @@ export async function checkoutBuyerCart(
 
   const requestHash = createCheckoutRequestHash({
     billingAddress,
+    couponCode,
     notes,
     paymentMethod,
     shippingAddress
@@ -842,30 +948,22 @@ export async function checkoutBuyerCart(
             }
           })
 
-          const cart = await getCheckoutCartRecord(tx, input.userId)
-
-          if (!cart) {
-            throw new CheckoutServiceError("CART_EMPTY", "Cart is empty.", 400)
-          }
-
-          assertCartConsistency(cart.items)
-
-          const lineItems = buildCheckoutLineItems(cart.items)
-          const subtotalMinor = lineItems.reduce(
-            (runningTotal, lineItem) => runningTotal + lineItem.subtotalMinor,
-            0
-          )
-          const totalMinor = subtotalMinor
-          const currency = lineItems[0]?.currency
-          const seller = cart.items[0]?.product.seller
-
-          if (!currency || !seller) {
-            throw new CheckoutServiceError(
-              "CART_ITEM_UNAVAILABLE",
-              "Cart contains unavailable items.",
-              409
-            )
-          }
+          const { cart, currency, lineItems, seller, subtotalMinor } =
+            await loadCheckoutCartContext(tx, input.userId)
+          const coupon = couponCode
+            ? await previewCouponForSeller({
+                code: couponCode,
+                sellerId: seller.id,
+                subtotalMinor
+              })
+            : null
+          const shipping = estimateShippingPreview({
+            currency,
+            itemCount: lineItems.reduce((sum, lineItem) => sum + lineItem.quantity, 0)
+          })
+          const discountMinor = Math.min(subtotalMinor, coupon?.discountMinor ?? 0)
+          const shippingMinor = shipping.estimatedMinor
+          const totalMinor = Math.max(0, subtotalMinor + shippingMinor - discountMinor)
 
           for (const lineItem of lineItems) {
             await reserveInventoryLine(tx, lineItem)
@@ -880,7 +978,7 @@ export async function checkoutBuyerCart(
               billingAddress,
               buyerId: input.userId,
               currency,
-              discountMinor: 0,
+              discountMinor,
               notes: notes || null,
               orderNumber,
               paidAt: null,
@@ -890,7 +988,7 @@ export async function checkoutBuyerCart(
               placedAt: now,
               sellerId: seller.id,
               shippingAddress,
-              shippingMinor: 0,
+              shippingMinor,
               state,
               subtotalMinor,
               taxMinor: 0,
@@ -904,6 +1002,28 @@ export async function checkoutBuyerCart(
             orderId: order.id,
             orderNumber
           })
+
+          if (coupon) {
+            await tx.couponRedemption.create({
+              data: {
+                buyerId: input.userId,
+                couponId: coupon.id,
+                discountMinor,
+                orderId: order.id
+              }
+            })
+
+            await tx.coupon.update({
+              data: {
+                redemptionCount: {
+                  increment: 1
+                }
+              },
+              where: {
+                id: coupon.id
+              }
+            })
+          }
 
           await tx.order.update({
             data: {
@@ -969,7 +1089,9 @@ export async function checkoutBuyerCart(
 
           const response: BuyerCheckoutResult = {
             billingAddress,
+            coupon,
             currency,
+            discountMinor,
             idempotencyKey,
             itemCount: lineItems.reduce(
               (runningTotal, lineItem) => runningTotal + lineItem.quantity,
@@ -984,6 +1106,7 @@ export async function checkoutBuyerCart(
               id: seller.id,
               slug: seller.slug
             },
+            shippingMinor,
             shippingAddress,
             state,
             subtotalMinor,

@@ -1,7 +1,9 @@
 import type {
   AuthSession,
   BuyerCart,
+  BuyerCheckoutPreview,
   BuyerCheckoutResult,
+  EligibleProductReviewOrder,
   FollowedSellerEntry,
   BuyerOrderTrackingData,
   BuyerProductDetail,
@@ -35,7 +37,9 @@ import {
   readCart,
   readCheckoutConfig,
   readOrderTracking,
+  previewCheckout,
   readProduct,
+  readProductReviewEligibility,
   readProductReviews,
   readSavedProducts,
   readSellerCatalog,
@@ -281,6 +285,10 @@ export default function App() {
     useState<BuyerProductDetail | null>(null);
   const [productReviews, setProductReviews] =
     useState<ProductReviewSummary | null>(null);
+  const [eligibleProductReviewOrders, setEligibleProductReviewOrders] =
+    useState<EligibleProductReviewOrder[]>([]);
+  const [isProductReviewEligibilityLoading, setIsProductReviewEligibilityLoading] =
+    useState(false);
   const [isProductLoading, setIsProductLoading] = useState(false);
   const [isProductReviewLoading, setIsProductReviewLoading] = useState(false);
   const [isSubmittingProductReview, setIsSubmittingProductReview] =
@@ -314,6 +322,11 @@ export default function App() {
     initialShippingAddress,
   );
   const [checkoutNotes, setCheckoutNotes] = useState("");
+  const [couponCodeDraft, setCouponCodeDraft] = useState("");
+  const [appliedCouponCode, setAppliedCouponCode] = useState("");
+  const [checkoutPreview, setCheckoutPreview] =
+    useState<BuyerCheckoutPreview | null>(null);
+  const [isCheckoutPreviewLoading, setIsCheckoutPreviewLoading] = useState(false);
   const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutResult, setCheckoutResult] =
@@ -576,8 +589,10 @@ export default function App() {
     if (!selectedProductSlug) {
       setSelectedProduct(null);
       setProductReviews(null);
+      setEligibleProductReviewOrders([]);
       setProductError(null);
       setProductReviewsError(null);
+      setIsProductReviewEligibilityLoading(false);
       setIsProductLoading(false);
       setIsProductReviewLoading(false);
       return;
@@ -587,8 +602,10 @@ export default function App() {
 
     setSelectedProduct(null);
     setProductReviews(null);
+    setEligibleProductReviewOrders([]);
     setProductError(null);
     setProductReviewsError(null);
+    setIsProductReviewEligibilityLoading(Boolean(sessionToken));
     setIsProductLoading(true);
     setIsProductReviewLoading(true);
 
@@ -627,12 +644,35 @@ export default function App() {
           setIsProductReviewLoading(false);
         }
       }
+
+      if (!sessionToken) {
+        return;
+      }
+
+      try {
+        const eligibilityPayload = await readProductReviewEligibility(
+          sessionToken,
+          selectedProductSlug,
+        );
+
+        if (isActive) {
+          setEligibleProductReviewOrders(eligibilityPayload);
+        }
+      } catch {
+        if (isActive) {
+          setEligibleProductReviewOrders([]);
+        }
+      } finally {
+        if (isActive) {
+          setIsProductReviewEligibilityLoading(false);
+        }
+      }
     })();
 
     return () => {
       isActive = false;
     };
-  }, [dictionary.detailFallback, selectedProductSlug]);
+  }, [dictionary.detailFallback, selectedProductSlug, sessionToken]);
 
   useEffect(() => {
     if (!sessionToken) {
@@ -670,6 +710,15 @@ export default function App() {
       isActive = false;
     };
   }, [sessionToken]);
+
+  useEffect(() => {
+    if (!sessionToken || cart.itemCount === 0) {
+      setCheckoutPreview(null);
+      return;
+    }
+
+    void refreshCheckoutPreview(sessionToken, appliedCouponCode);
+  }, [appliedCouponCode, cart.itemCount, cart.subtotalMinor, cart.totalMinor, cart.updatedAt, sessionToken]);
 
   useEffect(() => {
     if (!sessionToken) {
@@ -756,6 +805,40 @@ export default function App() {
     } finally {
       setIsCartLoading(false);
     }
+  }
+
+  async function refreshCheckoutPreview(
+    token = sessionToken,
+    nextCouponCode = appliedCouponCode,
+  ) {
+    if (!token || cart.itemCount === 0) {
+      setCheckoutPreview(null);
+      setIsCheckoutPreviewLoading(false);
+      return;
+    }
+
+    setIsCheckoutPreviewLoading(true);
+
+    try {
+      const payload = await previewCheckout(token, {
+        couponCode: nextCouponCode.trim() || null,
+      });
+
+      setCheckoutPreview(payload);
+    } catch (error) {
+      setCheckoutPreview(null);
+      setCheckoutError(
+        error instanceof Error ? error.message : "Unable to preview checkout.",
+      );
+    } finally {
+      setIsCheckoutPreviewLoading(false);
+    }
+  }
+
+  async function handleApplyCoupon() {
+    const normalizedCouponCode = couponCodeDraft.trim();
+    setAppliedCouponCode(normalizedCouponCode);
+    await refreshCheckoutPreview(sessionToken, normalizedCouponCode);
   }
 
   async function refreshBuyerAccountData(token = sessionToken) {
@@ -967,6 +1050,9 @@ export default function App() {
     setTrackingOrderId(null);
     setTrackingData(null);
     setTrackingError(null);
+    setCouponCodeDraft("");
+    setAppliedCouponCode("");
+    setCheckoutPreview(null);
     setSelectedPostId(null);
     setIsSellerMode(false);
     setSellerTab("create");
@@ -1711,6 +1797,7 @@ export default function App() {
         sessionToken,
         {
           billingAddress: shippingAddress,
+          couponCode: appliedCouponCode.trim() || null,
           notes: checkoutNotes.trim() || null,
           paymentMethod: selectedPaymentMethod,
           shippingAddress,
@@ -1729,6 +1816,9 @@ export default function App() {
       setTrackingOrderId(null);
       setTrackingData(null);
       setTrackingError(null);
+      setCouponCodeDraft("");
+      setAppliedCouponCode("");
+      setCheckoutPreview(null);
       await refreshCart(sessionToken);
     } catch (error) {
       setCheckoutError(
@@ -1884,14 +1974,10 @@ export default function App() {
   const isSelectedSellerFollowed = selectedProduct
     ? followedSellers.some((entry) => entry.seller.id === selectedProduct.seller.id)
     : false;
-  const eligibleReviewOrders = recentOrders
-    .filter(
-      (order) => order.state === "DELIVERED" || order.state === "COMPLETED",
-    )
-    .map((order) => ({
-      label: `${order.orderNumber} · ${order.sellerDisplayName}`,
-      orderId: order.orderId,
-    }));
+  const eligibleReviewOrders = eligibleProductReviewOrders.map((order) => ({
+    label: `${order.orderNumber} · ${order.sellerDisplayName}`,
+    orderId: order.orderId,
+  }));
 
   function renderAccountTab() {
     return (
@@ -2219,9 +2305,13 @@ export default function App() {
       return (
         <CartScreen
           cart={cart}
+          appliedCouponCode={appliedCouponCode}
+          checkoutPreview={checkoutPreview}
+          couponCodeDraft={couponCodeDraft}
           errorMessage={cartError ?? checkoutError ?? checkoutConfigError}
           isLoading={isCartLoading}
           isMutatingCart={isCartMutating}
+          isPreviewLoading={isCheckoutPreviewLoading}
           isSubmittingCheckout={isSubmittingCheckout}
           locale={locale}
           notes={checkoutNotes}
@@ -2235,9 +2325,11 @@ export default function App() {
               [field]: value,
             }))
           }
+          onChangeCouponCode={setCouponCodeDraft}
           onChangeNotes={setCheckoutNotes}
           onDecreaseItem={handleDecreaseItem}
           onIncreaseItem={handleIncreaseItem}
+          onRefreshPreview={() => void handleApplyCoupon()}
           onRemoveItem={handleRemoveItem}
           onSelectPaymentMethod={setSelectedPaymentMethod}
           onSubmitCheckout={handleSubmitCheckout}
@@ -2296,6 +2388,7 @@ export default function App() {
             eligibleReviewOrders={eligibleReviewOrders}
             isFollowingSeller={isSelectedSellerFollowed}
             isAddingToCart={Boolean(addingVariantId)}
+            isEligibilityLoading={isProductReviewEligibilityLoading}
             isLoading={isProductLoading}
             isReviewLoading={isProductReviewLoading}
             isSubmittingReview={isSubmittingProductReview}

@@ -1,6 +1,10 @@
 import { readCheckoutConfig } from "@khmercart/core"
 import { readAuthConfig, requireRoleFromHeaders } from "@khmercart/core/auth"
-import { CheckoutServiceError, checkoutBuyerCart } from "@khmercart/db"
+import {
+  CheckoutServiceError,
+  checkoutBuyerCart,
+  previewBuyerCheckout
+} from "@khmercart/db"
 import type { NextRequest } from "next/server"
 import { NextResponse } from "next/server"
 import { jsonErrorResponse, readJsonBody } from "../auth/_lib/auth-route"
@@ -19,6 +23,7 @@ type CheckoutBody = {
     postalCode?: string
     stateProvince?: string
   } | null
+  couponCode?: string
   notes?: string
   paymentMethod?: string
   shippingAddress?: {
@@ -67,6 +72,7 @@ export async function POST(request: NextRequest) {
 
     const checkout = await checkoutBuyerCart({
       billingAddress: body.billingAddress,
+      couponCode: body.couponCode,
       idempotencyKey,
       notes: body.notes,
       paymentMethod: body.paymentMethod,
@@ -75,6 +81,26 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json(checkout)
+  } catch (error) {
+    return jsonErrorResponse(error)
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await requireRoleFromHeaders(
+      request.headers,
+      readAuthConfig(process.env).jwtSecret,
+      "BUYER"
+    )
+    const body = await readJsonBody<Pick<CheckoutBody, "couponCode">>(request)
+
+    return NextResponse.json(
+      await previewBuyerCheckout({
+        couponCode: body.couponCode,
+        userId: session.user.id
+      })
+    )
   } catch (error) {
     return jsonErrorResponse(error)
   }

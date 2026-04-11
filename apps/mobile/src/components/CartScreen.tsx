@@ -1,5 +1,6 @@
 import type {
   BuyerCart,
+  BuyerCheckoutPreview,
   CheckoutAddressInput,
   PaymentMethod
 } from "../api/client";
@@ -34,9 +35,13 @@ type AddressField =
 
 type CartScreenProps = {
   cart: BuyerCart;
+  checkoutPreview: BuyerCheckoutPreview | null;
+  appliedCouponCode: string;
+  couponCodeDraft: string;
   errorMessage: string | null;
   isLoading: boolean;
   isMutatingCart: boolean;
+  isPreviewLoading: boolean;
   isSubmittingCheckout: boolean;
   locale: BuyerLocale;
   notes: string;
@@ -45,9 +50,11 @@ type CartScreenProps = {
   shippingAddress: CheckoutAddressInput;
   onBack: () => void;
   onChangeAddressField: (field: AddressField, value: string) => void;
+  onChangeCouponCode: (value: string) => void;
   onChangeNotes: (value: string) => void;
   onDecreaseItem: (variantId: string) => void;
   onIncreaseItem: (variantId: string) => void;
+  onRefreshPreview: () => void;
   onRemoveItem: (variantId: string) => void;
   onSelectPaymentMethod: (method: PaymentMethod) => void;
   onSubmitCheckout: () => void;
@@ -127,10 +134,14 @@ function resolveFieldLabel(locale: BuyerLocale, field: AddressField) {
 }
 
 export function CartScreen({
+  appliedCouponCode,
   cart,
+  checkoutPreview,
+  couponCodeDraft,
   errorMessage,
   isLoading,
   isMutatingCart,
+  isPreviewLoading,
   isSubmittingCheckout,
   locale,
   notes,
@@ -139,9 +150,11 @@ export function CartScreen({
   shippingAddress,
   onBack,
   onChangeAddressField,
+  onChangeCouponCode,
   onChangeNotes,
   onDecreaseItem,
   onIncreaseItem,
+  onRefreshPreview,
   onRemoveItem,
   onSelectPaymentMethod,
   onSubmitCheckout
@@ -348,6 +361,40 @@ export function CartScreen({
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.sectionLabel}>Coupon</Text>
+        <View style={styles.couponRow}>
+          <TextInput
+            autoCapitalize="characters"
+            onChangeText={onChangeCouponCode}
+            placeholder="Enter promo code"
+            placeholderTextColor={palette.muted}
+            style={[styles.input, styles.couponInput]}
+            value={couponCodeDraft}
+          />
+          <Pressable
+            disabled={isBusy || isPreviewLoading}
+            onPress={onRefreshPreview}
+            style={({ pressed }) => [
+              styles.applyButton,
+              pressed ? styles.buttonPressed : null,
+              isBusy || isPreviewLoading ? styles.buttonDisabled : null
+            ]}
+          >
+            {isPreviewLoading ? (
+              <ActivityIndicator color={palette.card} />
+            ) : (
+              <Text style={styles.applyButtonText}>Apply</Text>
+            )}
+          </Pressable>
+        </View>
+        {checkoutPreview?.coupon ? (
+          <Text style={styles.helperText}>{checkoutPreview.coupon.title} applied.</Text>
+        ) : appliedCouponCode ? (
+          <Text style={styles.helperText}>No valid coupon is currently applied.</Text>
+        ) : null}
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.sectionLabel}>{dictionary.orderSummary}</Text>
 
         <View style={styles.totalRow}>
@@ -360,9 +407,33 @@ export function CartScreen({
         </View>
 
         <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Shipping estimate</Text>
+          <Text style={styles.totalValue}>
+            {cart.currency
+              ? formatMoney(locale, cart.currency, checkoutPreview?.shippingMinor ?? 0)
+              : "--"}
+          </Text>
+        </View>
+
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Discount</Text>
+          <Text style={styles.totalValue}>
+            {cart.currency
+              ? `-${formatMoney(locale, cart.currency, checkoutPreview?.discountMinor ?? 0)}`
+              : "--"}
+          </Text>
+        </View>
+
+        <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>{dictionary.total}</Text>
           <Text style={styles.grandTotalValue}>
-            {cart.currency ? formatMoney(locale, cart.currency, cart.totalMinor) : "--"}
+            {cart.currency
+              ? formatMoney(
+                  locale,
+                  cart.currency,
+                  checkoutPreview?.totalMinor ?? cart.totalMinor
+                )
+              : "--"}
           </Text>
         </View>
 
@@ -387,6 +458,20 @@ export function CartScreen({
 }
 
 const styles = StyleSheet.create({
+  applyButton: {
+    alignItems: "center",
+    backgroundColor: palette.accent,
+    borderRadius: 18,
+    justifyContent: "center",
+    minHeight: 52,
+    minWidth: 88,
+    paddingHorizontal: 16
+  },
+  applyButtonText: {
+    color: palette.card,
+    fontSize: 14,
+    fontWeight: "700"
+  },
   backButton: {
     alignSelf: "flex-start",
     backgroundColor: palette.card,
@@ -434,6 +519,13 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
     paddingHorizontal: 20,
     paddingTop: 18
+  },
+  couponInput: {
+    flex: 1
+  },
+  couponRow: {
+    flexDirection: "row",
+    gap: 10
   },
   emptyText: {
     color: palette.muted,

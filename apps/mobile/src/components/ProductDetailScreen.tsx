@@ -28,6 +28,7 @@ type ProductDetailScreenProps = {
   }>;
   isFollowingSeller: boolean;
   isAddingToCart: boolean;
+  isEligibilityLoading: boolean;
   isLoading: boolean;
   isReviewLoading: boolean;
   isSubmittingReview: boolean;
@@ -56,6 +57,7 @@ export function ProductDetailScreen({
   eligibleReviewOrders,
   isFollowingSeller,
   isAddingToCart,
+  isEligibilityLoading,
   isLoading,
   isReviewLoading,
   isSubmittingReview,
@@ -375,7 +377,9 @@ export function ProductDetailScreen({
       {canAddToCart ? (
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Write a review</Text>
-          {eligibleReviewOrders.length ? (
+          {isEligibilityLoading ? (
+            <ActivityIndicator color={palette.accent} />
+          ) : eligibleReviewOrders.length ? (
             <>
               <View style={styles.ratingRow}>
                 {[1, 2, 3, 4, 5].map((rating) => {
