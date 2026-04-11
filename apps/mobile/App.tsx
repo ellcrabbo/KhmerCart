@@ -22,6 +22,7 @@ import type {
   SellerVideoPostsData,
 } from "./src/api/client";
 import {
+  createProductReview,
   createSellerVideoPost,
   createSellerProduct,
   getApiBaseUrl,
@@ -282,6 +283,8 @@ export default function App() {
     useState<ProductReviewSummary | null>(null);
   const [isProductLoading, setIsProductLoading] = useState(false);
   const [isProductReviewLoading, setIsProductReviewLoading] = useState(false);
+  const [isSubmittingProductReview, setIsSubmittingProductReview] =
+    useState(false);
   const [productError, setProductError] = useState<string | null>(null);
   const [productReviewsError, setProductReviewsError] = useState<string | null>(
     null,
@@ -1496,9 +1499,90 @@ export default function App() {
       const slug = notification.actionUrl.split("/products/")[1]?.split(/[?#]/)[0];
 
       if (slug) {
+        setSelectedPostId(null);
+        setTrackingOrderId(null);
         setSelectedProductSlug(decodeURIComponent(slug));
         setActiveTab("home");
+        return;
       }
+    }
+
+    if (notification.actionUrl?.includes("/orders/")) {
+      const orderId = notification.actionUrl.split("/orders/")[1]?.split(/[?#]/)[0];
+
+      if (orderId) {
+        setSelectedPostId(null);
+        setSelectedProductSlug(null);
+        setActiveTab("orders");
+        await loadTracking(decodeURIComponent(orderId), sessionToken);
+        return;
+      }
+    }
+
+    if (notification.actionUrl?.includes("/posts/")) {
+      const postId = notification.actionUrl.split("/posts/")[1]?.split(/[?#]/)[0];
+
+      if (postId) {
+        setTrackingOrderId(null);
+        setSelectedProductSlug(null);
+        setSelectedPostId(decodeURIComponent(postId));
+        setActiveTab("home");
+        return;
+      }
+    }
+
+    if (notification.actionUrl?.includes("/sellers/")) {
+      const sellerSlug = notification.actionUrl
+        .split("/sellers/")[1]
+        ?.split(/[?#]/)[0];
+
+      if (sellerSlug) {
+        const decodedSlug = decodeURIComponent(sellerSlug);
+        const matchingPost = feedState.items.find(
+          (item) =>
+            item.seller.slug === decodedSlug ||
+            item.product.seller.slug === decodedSlug,
+        );
+
+        setTrackingOrderId(null);
+        setSelectedProductSlug(null);
+        setActiveTab("home");
+
+        if (matchingPost) {
+          setSelectedPostId(matchingPost.id);
+        }
+      }
+    }
+  }
+
+  async function handleSubmitProductReview(input: {
+    body: string;
+    headline: string;
+    orderId: string;
+    rating: number;
+  }) {
+    if (!sessionToken || !selectedProductSlug) {
+      if (!requireBuyerSession()) {
+        return;
+      }
+      return;
+    }
+
+    setIsSubmittingProductReview(true);
+
+    try {
+      await createProductReview(sessionToken, selectedProductSlug, input);
+      const refreshedReviews = await readProductReviews(selectedProductSlug);
+      setProductReviews(refreshedReviews);
+      setProductReviewsError(null);
+      Alert.alert("KhmerCart", "Review submitted.");
+    } catch (error) {
+      Alert.alert(
+        "KhmerCart",
+        error instanceof Error ? error.message : "Unable to submit review.",
+      );
+    } finally {
+      setIsSubmittingProductReview(false);
     }
   }
 
@@ -1800,6 +1884,14 @@ export default function App() {
   const isSelectedSellerFollowed = selectedProduct
     ? followedSellers.some((entry) => entry.seller.id === selectedProduct.seller.id)
     : false;
+  const eligibleReviewOrders = recentOrders
+    .filter(
+      (order) => order.state === "DELIVERED" || order.state === "COMPLETED",
+    )
+    .map((order) => ({
+      label: `${order.orderNumber} · ${order.sellerDisplayName}`,
+      orderId: order.orderId,
+    }));
 
   function renderAccountTab() {
     return (
@@ -2201,15 +2293,18 @@ export default function App() {
             canAddToCart={Boolean(sessionToken)}
             cartCount={cart.itemCount}
             errorMessage={productError}
+            eligibleReviewOrders={eligibleReviewOrders}
             isFollowingSeller={isSelectedSellerFollowed}
             isAddingToCart={Boolean(addingVariantId)}
             isLoading={isProductLoading}
             isReviewLoading={isProductReviewLoading}
+            isSubmittingReview={isSubmittingProductReview}
             isSaved={isSelectedProductSaved}
             locale={locale}
             onAddToCart={handleAddToCart}
             onBack={() => setSelectedProductSlug(null)}
             onOpenCart={handleOpenCart}
+            onSubmitReview={(input) => void handleSubmitProductReview(input)}
             onToggleFollowSeller={() => void handleToggleFollowSeller()}
             onToggleSaveProduct={() => void handleToggleSavedProduct()}
             product={selectedProduct}

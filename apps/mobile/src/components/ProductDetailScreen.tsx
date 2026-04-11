@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View
 } from "react-native";
 import { formatDateTime, formatMoney } from "../lib/format";
@@ -21,15 +22,26 @@ type ProductDetailScreenProps = {
   canAddToCart: boolean;
   cartCount: number;
   errorMessage: string | null;
+  eligibleReviewOrders: Array<{
+    label: string;
+    orderId: string;
+  }>;
   isFollowingSeller: boolean;
   isAddingToCart: boolean;
   isLoading: boolean;
   isReviewLoading: boolean;
+  isSubmittingReview: boolean;
   isSaved: boolean;
   locale: BuyerLocale;
   onAddToCart: (variantId: string, quantity?: number) => void;
   onBack: () => void;
   onOpenCart: () => void;
+  onSubmitReview: (input: {
+    body: string;
+    headline: string;
+    orderId: string;
+    rating: number;
+  }) => void;
   onToggleFollowSeller: () => void;
   onToggleSaveProduct: () => void;
   product: BuyerProductDetail | null;
@@ -41,15 +53,18 @@ export function ProductDetailScreen({
   canAddToCart,
   cartCount,
   errorMessage,
+  eligibleReviewOrders,
   isFollowingSeller,
   isAddingToCart,
   isLoading,
   isReviewLoading,
+  isSubmittingReview,
   isSaved,
   locale,
   onAddToCart,
   onBack,
   onOpenCart,
+  onSubmitReview,
   onToggleFollowSeller,
   onToggleSaveProduct,
   product,
@@ -58,6 +73,12 @@ export function ProductDetailScreen({
 }: ProductDetailScreenProps) {
   const dictionary = getBuyerDictionary(locale);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewHeadline, setReviewHeadline] = useState("");
+  const [reviewBody, setReviewBody] = useState("");
+  const [selectedReviewOrderId, setSelectedReviewOrderId] = useState<string | null>(
+    null
+  );
 
   if (isLoading) {
     return (
@@ -350,6 +371,117 @@ export function ProductDetailScreen({
           </Text>
         )}
       </View>
+
+      {canAddToCart ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Write a review</Text>
+          {eligibleReviewOrders.length ? (
+            <>
+              <View style={styles.ratingRow}>
+                {[1, 2, 3, 4, 5].map((rating) => {
+                  const active = rating === reviewRating;
+
+                  return (
+                    <Pressable
+                      key={rating}
+                      onPress={() => setReviewRating(rating)}
+                      style={[
+                        styles.ratingChip,
+                        active ? styles.ratingChipSelected : null
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.ratingChipText,
+                          active ? styles.ratingChipTextSelected : null
+                        ]}
+                      >
+                        {rating}★
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <ScrollView
+                contentContainerStyle={styles.reviewOrderRow}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+              >
+                {eligibleReviewOrders.map((order) => {
+                  const active = order.orderId === selectedReviewOrderId;
+
+                  return (
+                    <Pressable
+                      key={order.orderId}
+                      onPress={() => setSelectedReviewOrderId(order.orderId)}
+                      style={[
+                        styles.reviewOrderChip,
+                        active ? styles.reviewOrderChipSelected : null
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.reviewOrderChipText,
+                          active ? styles.reviewOrderChipTextSelected : null
+                        ]}
+                      >
+                        {order.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
+              <TextInput
+                onChangeText={setReviewHeadline}
+                placeholder="Review headline"
+                placeholderTextColor={palette.muted}
+                style={styles.reviewInput}
+                value={reviewHeadline}
+              />
+              <TextInput
+                multiline
+                onChangeText={setReviewBody}
+                placeholder="What stood out about this product?"
+                placeholderTextColor={palette.muted}
+                style={[styles.reviewInput, styles.reviewTextarea]}
+                textAlignVertical="top"
+                value={reviewBody}
+              />
+
+              <Pressable
+                disabled={!selectedReviewOrderId || isSubmittingReview}
+                onPress={() =>
+                  onSubmitReview({
+                    body: reviewBody.trim(),
+                    headline: reviewHeadline.trim(),
+                    orderId: selectedReviewOrderId ?? "",
+                    rating: reviewRating
+                  })
+                }
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  pressed ? styles.buttonPressed : null,
+                  !selectedReviewOrderId || isSubmittingReview
+                    ? styles.buttonDisabled
+                    : null
+                ]}
+              >
+                {isSubmittingReview ? (
+                  <ActivityIndicator color={palette.card} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Submit review</Text>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <Text style={styles.disclosureValue}>
+              Reviewing unlocks after this product has been delivered in one of your recent orders.
+            </Text>
+          )}
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -489,6 +621,31 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700"
   },
+  ratingChip: {
+    backgroundColor: "#fffefb",
+    borderColor: palette.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  ratingChipSelected: {
+    backgroundColor: palette.accent,
+    borderColor: palette.accent
+  },
+  ratingChipText: {
+    color: palette.ink,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  ratingChipTextSelected: {
+    color: palette.card
+  },
+  ratingRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10
+  },
   quickActionButton: {
     backgroundColor: palette.sunMuted,
     borderRadius: 999,
@@ -539,6 +696,42 @@ const styles = StyleSheet.create({
   reviewMeta: {
     color: palette.muted,
     fontSize: 12
+  },
+  reviewInput: {
+    backgroundColor: "#fffefb",
+    borderColor: palette.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    color: palette.ink,
+    fontSize: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  reviewOrderChip: {
+    backgroundColor: "#fffefb",
+    borderColor: palette.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  reviewOrderChipSelected: {
+    backgroundColor: palette.sun,
+    borderColor: palette.sun
+  },
+  reviewOrderChipText: {
+    color: palette.ink,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  reviewOrderChipTextSelected: {
+    color: palette.card
+  },
+  reviewOrderRow: {
+    gap: 10
+  },
+  reviewTextarea: {
+    minHeight: 110
   },
   secondaryButton: {
     alignItems: "center",
