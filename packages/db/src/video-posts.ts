@@ -49,6 +49,7 @@ const publicVideoPostInclude = {
       seller: {
         select: {
           displayName: true,
+          id: true,
           slug: true,
           supportEmail: true,
           supportPhone: true
@@ -74,6 +75,7 @@ const publicVideoPostInclude = {
   seller: {
     select: {
       displayName: true,
+      id: true,
       slug: true,
       supportEmail: true,
       supportPhone: true
@@ -180,6 +182,7 @@ export type BuyerVideoFeedItem = {
     seller: {
       contact: string;
       displayName: string;
+      id: string;
       slug: string;
     };
     slug: string;
@@ -192,6 +195,7 @@ export type BuyerVideoFeedItem = {
   seller: {
     contact: string;
     displayName: string;
+    id: string;
     slug: string;
   };
   shoppableProducts: Array<{
@@ -663,6 +667,7 @@ async function mapBuyerVideoFeedItem(record: PublicVideoPostRecord): Promise<Buy
       seller: {
         contact: resolveSellerContact(record.product.seller),
         displayName: record.product.seller.displayName,
+        id: record.product.seller.id,
         slug: record.product.seller.slug
       },
       slug: record.product.slug,
@@ -675,6 +680,7 @@ async function mapBuyerVideoFeedItem(record: PublicVideoPostRecord): Promise<Buy
     seller: {
       contact: resolveSellerContact(record.seller),
       displayName: record.seller.displayName,
+      id: record.seller.id,
       slug: record.seller.slug
     },
     shoppableProducts: record.attachments.map((attachment) => ({

@@ -93,6 +93,7 @@ export type BuyerFeedItem = {
   seller: {
     contact: string
     displayName: string
+    id: string
     slug: string
   }
   slug: string
@@ -145,6 +146,7 @@ export type BuyerVideoFeedItem = {
     seller: {
       contact: string
       displayName: string
+      id: string
       slug: string
     }
     slug: string
@@ -157,6 +159,7 @@ export type BuyerVideoFeedItem = {
   seller: {
     contact: string
     displayName: string
+    id: string
     slug: string
   }
   shoppableProducts: Array<{

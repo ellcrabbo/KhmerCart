@@ -19,6 +19,7 @@ const buyerProductInclude = {
   seller: {
     select: {
       displayName: true,
+      id: true,
       reviewAggregate: {
         select: {
           averageRating: true,
@@ -102,6 +103,7 @@ export type BuyerLeadVariant = Pick<
 export type BuyerCatalogSeller = {
   contact: string;
   displayName: string;
+  id: string;
   ratingSummary?: {
     averageRating: number;
     reviewCount: number;
@@ -352,6 +354,7 @@ function mapBuyerFeedItem(product: BuyerProductRecord): BuyerFeedItem {
       seller: {
         contact: resolveSellerContact(product),
         displayName: product.seller.displayName,
+        id: product.seller.id,
         ratingSummary: product.seller.reviewAggregate
           ? {
               averageRating: product.seller.reviewAggregate.averageRating,
