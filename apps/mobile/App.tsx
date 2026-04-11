@@ -2,14 +2,18 @@ import type {
   AuthSession,
   BuyerCart,
   BuyerCheckoutResult,
+  FollowedSellerEntry,
   BuyerOrderTrackingData,
   BuyerProductDetail,
   BuyerVideoFeedResult,
   CheckoutAddressInput,
   CreateSellerProductInput,
   CreateSellerVideoPostInput,
+  NotificationEntry,
   PaymentMethod,
+  ProductReviewSummary,
   RequestOtpResponse,
+  SavedProductEntry,
   SaveSellerOnboardingInput,
   SaveSellerShipmentInput,
   SellerCatalogData,
@@ -22,22 +26,30 @@ import {
   createSellerProduct,
   getApiBaseUrl,
   listVideoFeed,
+  markNotificationAsRead,
   mutateCartItem,
+  readFollowedSellers,
+  readNotifications,
   readBuyerSession,
   readCart,
   readCheckoutConfig,
   readOrderTracking,
   readProduct,
+  readProductReviews,
+  readSavedProducts,
   readSellerCatalog,
   readSellerDashboard,
   readSellerShippingQueue,
   readSellerVideoPosts,
+  recordVideoFeedMetric,
   requestSellerVideoPostUpload,
   requestOtp,
   resolveAbsoluteUrl,
   saveSellerOnboarding,
   saveSellerShipment,
   submitCheckout,
+  toggleFollowedSellerState,
+  toggleSavedProductState,
   verifyOtp,
 } from "./src/api/client";
 import { AuthPanel } from "./src/components/AuthPanel";
@@ -69,6 +81,11 @@ import {
   rememberTrackedOrder,
   type BuyerRecentOrder,
 } from "./src/lib/orders";
+import {
+  clearPersistedSellerVideoDraft,
+  readPersistedSellerVideoDraft,
+  writePersistedSellerVideoDraft,
+} from "./src/lib/seller-draft";
 import {
   clearStoredSessionToken,
   readStoredSessionToken,
@@ -261,8 +278,22 @@ export default function App() {
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] =
     useState<BuyerProductDetail | null>(null);
+  const [productReviews, setProductReviews] =
+    useState<ProductReviewSummary | null>(null);
   const [isProductLoading, setIsProductLoading] = useState(false);
+  const [isProductReviewLoading, setIsProductReviewLoading] = useState(false);
   const [productError, setProductError] = useState<string | null>(null);
+  const [productReviewsError, setProductReviewsError] = useState<string | null>(
+    null,
+  );
+
+  const [savedProducts, setSavedProducts] = useState<SavedProductEntry[]>([]);
+  const [followedSellers, setFollowedSellers] = useState<FollowedSellerEntry[]>(
+    [],
+  );
+  const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
+  const [isAccountDataLoading, setIsAccountDataLoading] = useState(false);
+  const [accountDataError, setAccountDataError] = useState<string | null>(null);
 
   const [cart, setCart] = useState<BuyerCart>(emptyCartState);
   const [isCartLoading, setIsCartLoading] = useState(false);
@@ -336,6 +367,29 @@ export default function App() {
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    void (async () => {
+      const persistedDraft = await readPersistedSellerVideoDraft();
+
+      if (isActive && persistedDraft) {
+        setSellerVideoDraft((current) => ({
+          ...current,
+          ...persistedDraft,
+        }));
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    void writePersistedSellerVideoDraft(sellerVideoDraft);
+  }, [sellerVideoDraft]);
 
   useEffect(() => {
     if (
@@ -518,35 +572,56 @@ export default function App() {
   useEffect(() => {
     if (!selectedProductSlug) {
       setSelectedProduct(null);
+      setProductReviews(null);
       setProductError(null);
+      setProductReviewsError(null);
       setIsProductLoading(false);
+      setIsProductReviewLoading(false);
       return;
     }
 
     let isActive = true;
 
     setSelectedProduct(null);
+    setProductReviews(null);
     setProductError(null);
+    setProductReviewsError(null);
     setIsProductLoading(true);
+    setIsProductReviewLoading(true);
 
     void (async () => {
       try {
-        const payload = await readProduct(selectedProductSlug);
+        const productPayload = await readProduct(selectedProductSlug);
 
         if (!isActive) {
           return;
         }
 
-        setSelectedProduct(payload);
+        setSelectedProduct(productPayload);
       } catch (error) {
         if (isActive) {
           setProductError(
             error instanceof Error ? error.message : dictionary.detailFallback,
           );
         }
+      }
+
+      try {
+        const reviewPayload = await readProductReviews(selectedProductSlug);
+
+        if (isActive) {
+          setProductReviews(reviewPayload);
+        }
+      } catch (error) {
+        if (isActive) {
+          setProductReviewsError(
+            error instanceof Error ? error.message : "Unable to load reviews.",
+          );
+        }
       } finally {
         if (isActive) {
           setIsProductLoading(false);
+          setIsProductReviewLoading(false);
         }
       }
     })();
@@ -594,6 +669,56 @@ export default function App() {
   }, [sessionToken]);
 
   useEffect(() => {
+    if (!sessionToken) {
+      setSavedProducts([]);
+      setFollowedSellers([]);
+      setNotifications([]);
+      setAccountDataError(null);
+      setIsAccountDataLoading(false);
+      return;
+    }
+
+    let isActive = true;
+
+    setIsAccountDataLoading(true);
+    setAccountDataError(null);
+
+    void (async () => {
+      try {
+        const [saved, followed, inbox] = await Promise.all([
+          readSavedProducts(sessionToken),
+          readFollowedSellers(sessionToken),
+          readNotifications(sessionToken),
+        ]);
+
+        if (!isActive) {
+          return;
+        }
+
+        setSavedProducts(saved);
+        setFollowedSellers(followed);
+        setNotifications(inbox);
+      } catch (error) {
+        if (isActive) {
+          setAccountDataError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load account activity.",
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsAccountDataLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [sessionToken]);
+
+  useEffect(() => {
     if (!session?.user.phone?.trim()) {
       return;
     }
@@ -627,6 +752,38 @@ export default function App() {
       );
     } finally {
       setIsCartLoading(false);
+    }
+  }
+
+  async function refreshBuyerAccountData(token = sessionToken) {
+    if (!token) {
+      setSavedProducts([]);
+      setFollowedSellers([]);
+      setNotifications([]);
+      return;
+    }
+
+    setIsAccountDataLoading(true);
+    setAccountDataError(null);
+
+    try {
+      const [saved, followed, inbox] = await Promise.all([
+        readSavedProducts(token),
+        readFollowedSellers(token),
+        readNotifications(token),
+      ]);
+
+      setSavedProducts(saved);
+      setFollowedSellers(followed);
+      setNotifications(inbox);
+    } catch (error) {
+      setAccountDataError(
+        error instanceof Error
+          ? error.message
+          : "Unable to refresh account activity.",
+      );
+    } finally {
+      setIsAccountDataLoading(false);
     }
   }
 
@@ -791,6 +948,7 @@ export default function App() {
 
   async function handleSignOut() {
     await clearStoredSessionToken();
+    await clearPersistedSellerVideoDraft();
 
     setSession(null);
     setSessionToken(null);
@@ -816,6 +974,9 @@ export default function App() {
     setSellerError(null);
     setSellerMessage(null);
     setSellerVideoDraft(initialSellerVideoDraft);
+    setSavedProducts([]);
+    setFollowedSellers([]);
+    setNotifications([]);
   }
 
   function handleChangeSellerProfileField(
@@ -1092,6 +1253,10 @@ export default function App() {
     setIsSellerSaving(true);
     setSellerError(null);
     setSellerMessage(null);
+    setSellerVideoDraft((current) => ({
+      ...current,
+      status: status === "PUBLISHED" ? "UPLOADING" : "DRAFT",
+    }));
 
     try {
       const [videoKey, posterKey] = await Promise.all([
@@ -1105,7 +1270,15 @@ export default function App() {
           : Promise.resolve(null),
       ]);
 
-      await createSellerVideoPost(sessionToken, {
+      setSellerVideoDraft((current) => ({
+        ...current,
+        status: status === "PUBLISHED" ? "PROCESSING" : "DRAFT",
+      }));
+
+      const createdPost = await createSellerVideoPost(sessionToken, {
+        attachmentProductIds: sellerVideoDraft.productId
+          ? [sellerVideoDraft.productId]
+          : [],
         aspectRatio: sellerVideoDraft.videoAsset.aspectRatio,
         caption: sellerVideoDraft.caption.trim(),
         durationSec: sellerVideoDraft.videoAsset.durationSec,
@@ -1125,6 +1298,7 @@ export default function App() {
         setIsSellerMode(false);
         setActiveTab("home");
       }
+      await clearPersistedSellerVideoDraft();
       setSellerVideoDraft((current) => ({
         ...initialSellerVideoDraft,
         productId:
@@ -1135,10 +1309,16 @@ export default function App() {
       }));
       setSellerMessage(
         status === "PUBLISHED"
-          ? "Video post published."
+          ? createdPost.moderationStatus === "APPROVED"
+            ? "Video post published."
+            : "Video post submitted and queued for moderation."
           : "Video post saved as draft.",
       );
     } catch (error) {
+      setSellerVideoDraft((current) => ({
+        ...current,
+        status: "FAILED",
+      }));
       setSellerError(
         error instanceof Error
           ? error.message
@@ -1236,7 +1416,93 @@ export default function App() {
     setActiveTab("orders");
   }
 
-  async function handleAddToCart(variantId: string) {
+  async function handleRecordVideoMetric(
+    eventType:
+      | "IMPRESSION"
+      | "VIEWER_OPEN"
+      | "PRODUCT_OPEN"
+      | "ADD_TO_CART"
+      | "CHECKOUT_START"
+      | "ORDER_CONVERSION",
+    videoPostId: string,
+  ) {
+    try {
+      await recordVideoFeedMetric({
+        eventType,
+        videoPostId,
+      });
+    } catch {
+      // Ignore analytics failures in the mobile client.
+    }
+  }
+
+  async function handleToggleSavedProduct() {
+    if (!selectedProduct || !sessionToken) {
+      if (!requireBuyerSession()) {
+        return;
+      }
+      return;
+    }
+
+    try {
+      await toggleSavedProductState(sessionToken, selectedProduct.id);
+      await refreshBuyerAccountData(sessionToken);
+    } catch (error) {
+      Alert.alert(
+        "KhmerCart",
+        error instanceof Error ? error.message : "Unable to update saved products.",
+      );
+    }
+  }
+
+  async function handleToggleFollowSeller() {
+    if (!selectedProduct || !sessionToken) {
+      if (!requireBuyerSession()) {
+        return;
+      }
+      return;
+    }
+
+    try {
+      await toggleFollowedSellerState(sessionToken, selectedProduct.seller.id);
+      await refreshBuyerAccountData(sessionToken);
+    } catch (error) {
+      Alert.alert(
+        "KhmerCart",
+        error instanceof Error ? error.message : "Unable to update followed sellers.",
+      );
+    }
+  }
+
+  async function handleOpenNotification(notification: NotificationEntry) {
+    if (!sessionToken) {
+      return;
+    }
+
+    if (!notification.isRead) {
+      try {
+        await markNotificationAsRead(sessionToken, notification.id);
+        setNotifications((current) =>
+          current.map((entry) =>
+            entry.id === notification.id ? { ...entry, isRead: true } : entry,
+          ),
+        );
+      } catch {
+        // Ignore notification ack failures in the client.
+      }
+    }
+
+    if (notification.actionUrl?.includes("/products/")) {
+      const slug = notification.actionUrl.split("/products/")[1]?.split(/[?#]/)[0];
+
+      if (slug) {
+        setSelectedProductSlug(decodeURIComponent(slug));
+        setActiveTab("home");
+      }
+    }
+  }
+
+  async function handleAddToCart(variantId: string, quantity = 1) {
     if (!requireBuyerSession() || !sessionToken) {
       return;
     }
@@ -1247,7 +1513,7 @@ export default function App() {
     try {
       const payload = await mutateCartItem(sessionToken, {
         action: "ADD",
-        quantity: 1,
+        quantity,
         variantId,
       });
 
@@ -1528,6 +1794,13 @@ export default function App() {
     );
   }
 
+  const isSelectedProductSaved = selectedProduct
+    ? savedProducts.some((entry) => entry.product.id === selectedProduct.id)
+    : false;
+  const isSelectedSellerFollowed = selectedProduct
+    ? followedSellers.some((entry) => entry.seller.id === selectedProduct.seller.id)
+    : false;
+
   function renderAccountTab() {
     return (
       <ScrollView contentContainerStyle={styles.content}>
@@ -1603,6 +1876,101 @@ export default function App() {
                     {dictionary.sellerWorkspaceLocked}
                   </Text>
                 </View>
+              ) : null}
+
+              {session ? (
+                <>
+                  <View style={styles.workspaceCard}>
+                    <View style={styles.accountSectionHeader}>
+                      <Text style={styles.sectionEyebrow}>Notifications</Text>
+                      {isAccountDataLoading ? (
+                        <ActivityIndicator color={palette.accent} size="small" />
+                      ) : null}
+                    </View>
+                    {notifications.length ? (
+                      <View style={styles.accountList}>
+                        {notifications.slice(0, 4).map((notification) => (
+                          <Pressable
+                            key={notification.id}
+                            onPress={() => void handleOpenNotification(notification)}
+                            style={[
+                              styles.accountListCard,
+                              !notification.isRead
+                                ? styles.accountListCardUnread
+                                : null,
+                            ]}
+                          >
+                            <Text style={styles.accountListTitle}>
+                              {notification.title}
+                            </Text>
+                            <Text style={styles.accountListBody}>
+                              {notification.body}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={styles.workspaceBody}>
+                        No notifications yet.
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.workspaceCard}>
+                    <Text style={styles.sectionEyebrow}>Saved products</Text>
+                    {savedProducts.length ? (
+                      <View style={styles.accountList}>
+                        {savedProducts.slice(0, 4).map((entry) => (
+                          <Pressable
+                            key={entry.id}
+                            onPress={() => {
+                              setActiveTab("home");
+                              setSelectedProductSlug(entry.product.slug);
+                            }}
+                            style={styles.accountListCard}
+                          >
+                            <Text style={styles.accountListTitle}>
+                              {entry.product.name}
+                            </Text>
+                            <Text style={styles.accountListBody}>
+                              @{entry.product.sellerSlug}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={styles.workspaceBody}>
+                        Save products from detail pages to build a wishlist.
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.workspaceCard}>
+                    <Text style={styles.sectionEyebrow}>Followed sellers</Text>
+                    {followedSellers.length ? (
+                      <View style={styles.accountList}>
+                        {followedSellers.slice(0, 4).map((entry) => (
+                          <View key={entry.id} style={styles.accountListCard}>
+                            <Text style={styles.accountListTitle}>
+                              {entry.seller.displayName}
+                            </Text>
+                            <Text style={styles.accountListBody}>
+                              @{entry.seller.slug} · {entry.seller.followerCount} followers
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={styles.workspaceBody}>
+                        Follow sellers from product detail to keep their drops close.
+                      </Text>
+                    )}
+                  </View>
+                </>
+              ) : null}
+
+              {accountDataError ? (
+                <Text style={styles.errorBanner}>{accountDataError}</Text>
               ) : null}
             </View>
           )}
@@ -1833,20 +2201,33 @@ export default function App() {
             canAddToCart={Boolean(sessionToken)}
             cartCount={cart.itemCount}
             errorMessage={productError}
+            isFollowingSeller={isSelectedSellerFollowed}
             isAddingToCart={Boolean(addingVariantId)}
             isLoading={isProductLoading}
+            isReviewLoading={isProductReviewLoading}
+            isSaved={isSelectedProductSaved}
             locale={locale}
             onAddToCart={handleAddToCart}
             onBack={() => setSelectedProductSlug(null)}
             onOpenCart={handleOpenCart}
+            onToggleFollowSeller={() => void handleToggleFollowSeller()}
+            onToggleSaveProduct={() => void handleToggleSavedProduct()}
             product={selectedProduct}
+            reviews={productReviews}
+            reviewsError={productReviewsError}
           />
         ) : selectedPostId ? (
           <PostViewerScreen
+            canAddToCart={Boolean(sessionToken)}
+            cartCount={cart.itemCount}
             initialPostId={selectedPostId}
+            isAddingToCart={Boolean(addingVariantId)}
             items={feedState.items}
             locale={locale}
+            onAddToCart={handleAddToCart}
             onBack={() => setSelectedPostId(null)}
+            onMetric={handleRecordVideoMetric}
+            onOpenCart={handleOpenCart}
             onOpenProduct={setSelectedProductSlug}
           />
         ) : isSellerMode ? (
@@ -1891,6 +2272,35 @@ const styles = StyleSheet.create({
   },
   accountStack: {
     gap: 16,
+  },
+  accountList: {
+    gap: 10,
+  },
+  accountListBody: {
+    color: palette.muted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  accountListCard: {
+    backgroundColor: "#fffefb",
+    borderColor: palette.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 4,
+    padding: 14,
+  },
+  accountListCardUnread: {
+    borderColor: palette.accent,
+  },
+  accountListTitle: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  accountSectionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   buttonPressed: {
     opacity: 0.9,

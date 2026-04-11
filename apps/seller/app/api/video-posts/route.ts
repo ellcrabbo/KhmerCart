@@ -14,6 +14,7 @@ import {
 export const runtime = "nodejs";
 
 type CreateVideoPostBody = {
+  attachmentProductIds?: string[];
   aspectRatio?: number;
   caption?: string;
   durationSec?: number;
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       await createSellerVideoPost({
         actorUserId: session.user.id,
+        attachmentProductIds: body.attachmentProductIds,
         aspectRatio: body.aspectRatio,
         caption: body.caption,
         durationSec: body.durationSec,

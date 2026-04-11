@@ -23,7 +23,7 @@ export type SellerVideoDraftState = {
   posterLabel: string | null;
   posterPreviewUrl: string | null;
   productId: string | null;
-  status: "DRAFT" | "PUBLISHED";
+  status: "DRAFT" | "UPLOADING" | "PROCESSING" | "READY" | "FAILED" | "PUBLISHED";
   videoLabel: string | null;
 };
 
@@ -97,6 +97,7 @@ export function SellerPostsScreen({
             <Text style={styles.readinessTitle}>Publish readiness</Text>
             <Text style={styles.readinessPill}>{draftReadyCount}/3</Text>
           </View>
+          <Text style={styles.readinessStatus}>Current state: {draft.status}</Text>
           <Text style={styles.readinessBody}>
             Add a caption, select a vertical clip, and attach one product before
             publishing to the buyer feed.
@@ -276,6 +277,14 @@ export function SellerPostsScreen({
                       ? formatMoney(locale, post.product.currency, post.product.priceMinor)
                       : post.product.status}
                     {post.publishedAt ? ` · Live ${post.publishedAt.slice(0, 10)}` : ""}
+                  </Text>
+                  <Text style={styles.productChipMeta}>
+                    {post.analytics.impressions} views · {post.analytics.addToCarts} adds ·{" "}
+                    {post.analytics.conversions} orders
+                  </Text>
+                  <Text style={styles.productChipMeta}>
+                    Moderation: {post.moderationStatus}
+                    {post.processingError ? ` · ${post.processingError}` : ""}
                   </Text>
                 </View>
               </View>
@@ -516,6 +525,11 @@ const styles = StyleSheet.create({
   readinessRow: {
     flexDirection: "row",
     gap: 12
+  },
+  readinessStatus: {
+    color: palette.accent,
+    fontSize: 13,
+    fontWeight: "700"
   },
   readinessTitle: {
     color: palette.ink,

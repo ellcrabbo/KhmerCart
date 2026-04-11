@@ -55,8 +55,19 @@ enum ProductModerationStatus {
 
 enum VideoPostStatus {
   DRAFT
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
   PUBLISHED
   ARCHIVED
+}
+
+enum VideoPostModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  HIDDEN
 }
 
 enum PaymentMethod {
@@ -166,24 +177,83 @@ enum DisputeStatus {
   CLOSED
 }
 
+enum NotificationChannel {
+  IN_APP
+  PUSH
+  EMAIL
+}
+
+enum NotificationKind {
+  FOLLOW_SELLER
+  SAVED_PRODUCT_BACK_IN_STOCK
+  ORDER_UPDATE
+  CAMPAIGN_DROP
+  PRODUCT_APPROVED
+  VIDEO_POST_APPROVED
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  HIDDEN
+}
+
+enum CouponType {
+  PERCENT
+  AMOUNT
+}
+
+enum CouponScope {
+  ORDER
+  PRODUCT
+  BUNDLE
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  ENDED
+  ARCHIVED
+}
+
+enum CampaignSlotType {
+  FEED_BOOST
+  PINNED_POST
+  FEATURED_DROP
+}
+
+enum DeepLinkTargetType {
+  POST
+  PRODUCT
+  ORDER
+  SELLER
+}
+
 model User {
-  id              String                @id @default(cuid())
-  email           String?               @unique
-  phone           String?               @unique
-  fullName        String
-  passwordHash    String?
-  isActive        Boolean               @default(true)
-  lastLoginAt     DateTime?
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  sellerProfile   Seller?
-  cart            Cart?
-  roleAssignments UserRoleAssignment[]
-  buyerOrders     Order[]               @relation("BuyerOrders")
-  orderEvents     OrderEvent[]          @relation("OrderEventActor")
-  shipmentEvents  ShipmentEvent[]       @relation("ShipmentEventActor")
-  auditLogs       AuditLog[]            @relation("AuditLogActor")
-  checkoutKeys    CheckoutIdempotency[]
+  id                      String                   @id @default(cuid())
+  email                   String?                  @unique
+  phone                   String?                  @unique
+  fullName                String
+  passwordHash            String?
+  isActive                Boolean                  @default(true)
+  lastLoginAt             DateTime?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  sellerProfile           Seller?
+  cart                    Cart?
+  roleAssignments         UserRoleAssignment[]
+  buyerOrders             Order[]                  @relation("BuyerOrders")
+  orderEvents             OrderEvent[]             @relation("OrderEventActor")
+  shipmentEvents          ShipmentEvent[]          @relation("ShipmentEventActor")
+  auditLogs               AuditLog[]               @relation("AuditLogActor")
+  checkoutKeys            CheckoutIdempotency[]
+  productReviews          ProductReview[]
+  savedProducts           SavedProduct[]
+  followedSellers         FollowedSeller[]
+  notificationPreferences NotificationPreference[]
+  notifications           UserNotification[]
+  deepLinkEvents          DeepLinkEvent[]
+  couponRedemptions       CouponRedemption[]
 }
 
 model OtpChallenge {
@@ -248,15 +318,22 @@ model Seller {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
   user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  products            Product[]
-  documents           SellerDocument[]
-  inventories         Inventory[]
-  orders              Order[]
-  videoPosts          VideoPost[]
-  shipments           Shipment[]
-  ledgerAccounts      LedgerAccount[]
-  payoutBatches       PayoutBatch[]
-  payoutItems         PayoutItem[]
+  products              Product[]
+  documents             SellerDocument[]
+  inventories           Inventory[]
+  orders                Order[]
+  videoPosts            VideoPost[]
+  shipments             Shipment[]
+  ledgerAccounts        LedgerAccount[]
+  payoutBatches         PayoutBatch[]
+  payoutItems           PayoutItem[]
+  receivedFollowers     FollowedSeller[]
+  reviewAggregate       SellerReviewAggregate?
+  bundles               ProductBundle[]
+  coupons               Coupon[]
+  campaigns             Campaign[]
+  notificationFollowers   UserNotification[]         @relation("NotificationSeller")
+  productReviews          ProductReview[]
 
   @@index([kycStatus])
 }
@@ -298,9 +375,15 @@ model Product {
   seller           Seller                  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   images           ProductImage[]
   variants         ProductVariant[]
-  videoPosts       VideoPost[]
-  cartItems        CartItem[]
-  orderItems       OrderItem[]
+  videoPosts         VideoPost[]
+  cartItems          CartItem[]
+  orderItems         OrderItem[]
+  reviews            ProductReview[]
+  savedBy            SavedProduct[]
+  bundleItems        ProductBundleItem[]
+  postAttachments    VideoPostAttachment[]
+  couponTargets      Coupon[]
+  campaignSlots      CampaignSlot[]               @relation("CampaignSlotProduct")
 
   @@unique([sellerId, slug])
   @@index([sellerId, status])
@@ -362,24 +445,69 @@ model ProductImage {
 }
 
 model VideoPost {
-  id          String          @id @default(cuid())
-  sellerId    String
-  productId   String
-  caption     String
-  videoKey    String          @unique
-  posterKey   String?
-  durationSec Int?
-  aspectRatio Float?
-  status      VideoPostStatus @default(DRAFT)
-  publishedAt DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  seller      Seller          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  product     Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id                String                    @id @default(cuid())
+  sellerId          String
+  productId         String
+  caption           String
+  videoKey          String                    @unique
+  posterKey         String?
+  durationSec       Int?
+  aspectRatio       Float?
+  status            VideoPostStatus           @default(DRAFT)
+  moderationStatus  VideoPostModerationStatus @default(PENDING)
+  moderationNotes   String?
+  processingError   String?
+  processingStartedAt DateTime?
+  processedAt       DateTime?
+  featuredScore     Float                     @default(0)
+  manualBoost       Float                     @default(0)
+  isPinned          Boolean                   @default(false)
+  publishedAt       DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  seller            Seller                    @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  product           Product                   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attachments       VideoPostAttachment[]
+  metrics           VideoPostMetricDaily[]
+  campaignSlots     CampaignSlot[]            @relation("CampaignSlotVideoPost")
 
   @@index([sellerId, status])
   @@index([publishedAt, id])
   @@index([productId, status])
+  @@index([moderationStatus, status])
+}
+
+model VideoPostAttachment {
+  id          String    @id @default(cuid())
+  videoPostId String
+  productId   String
+  position    Int       @default(0)
+  isPrimary   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  videoPost   VideoPost @relation(fields: [videoPostId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([videoPostId, productId])
+  @@index([videoPostId, position])
+}
+
+model VideoPostMetricDaily {
+  id             String   @id @default(cuid())
+  videoPostId    String
+  metricDate     DateTime
+  impressions    Int      @default(0)
+  opens          Int      @default(0)
+  productOpens   Int      @default(0)
+  addToCarts     Int      @default(0)
+  checkoutStarts Int      @default(0)
+  conversions    Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  videoPost      VideoPost @relation(fields: [videoPostId], references: [id], onDelete: Cascade)
+
+  @@unique([videoPostId, metricDate])
+  @@index([metricDate])
 }
 
 model Cart {
@@ -443,6 +571,9 @@ model Order {
   ledgerEntries    LedgerEntry[]
   payoutItems      PayoutItem[]
   checkoutKeys     CheckoutIdempotency[]
+  reviews          ProductReview[]
+  couponRedemption CouponRedemption?
+  deepLinkEvents   DeepLinkEvent[]
 
   @@index([buyerId, createdAt])
   @@index([sellerId, state])
@@ -697,6 +828,226 @@ model Dispute {
 
   @@index([orderId])
   @@index([status, createdAt])
+}
+
+model ProductReview {
+  id           String       @id @default(cuid())
+  productId    String
+  sellerId     String
+  buyerId      String
+  orderId      String
+  rating       Int
+  headline     String?
+  body         String?
+  status       ReviewStatus @default(PUBLISHED)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  seller       Seller       @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  buyer        User         @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([buyerId, orderId, productId])
+  @@index([productId, status, createdAt])
+  @@index([sellerId, status, createdAt])
+}
+
+model SellerReviewAggregate {
+  sellerId       String   @id
+  reviewCount    Int      @default(0)
+  averageRating  Float    @default(0)
+  fiveStarCount  Int      @default(0)
+  fourStarCount  Int      @default(0)
+  threeStarCount Int      @default(0)
+  twoStarCount   Int      @default(0)
+  oneStarCount   Int      @default(0)
+  updatedAt      DateTime @updatedAt
+  seller         Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+}
+
+model SavedProduct {
+  id          String   @id @default(cuid())
+  buyerId     String
+  productId   String
+  createdAt   DateTime @default(now())
+  buyer       User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([buyerId, productId])
+  @@index([buyerId, createdAt])
+}
+
+model FollowedSeller {
+  id         String   @id @default(cuid())
+  buyerId     String
+  sellerId    String
+  createdAt   DateTime @default(now())
+  buyer      User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  seller     Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@unique([buyerId, sellerId])
+  @@index([sellerId, createdAt])
+}
+
+model NotificationPreference {
+  id        String              @id @default(cuid())
+  userId    String
+  kind      NotificationKind
+  channel   NotificationChannel
+  enabled   Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, channel])
+}
+
+model UserNotification {
+  id              String              @id @default(cuid())
+  userId          String
+  sellerId        String?
+  kind            NotificationKind
+  channel         NotificationChannel @default(IN_APP)
+  title           String
+  body            String
+  actionUrl       String?
+  metadata        Json?
+  isRead          Boolean             @default(false)
+  readAt          DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seller          Seller?             @relation("NotificationSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+
+  @@index([userId, isRead, createdAt])
+}
+
+model Coupon {
+  id                String      @id @default(cuid())
+  sellerId          String
+  productId         String?
+  bundleId          String?
+  code              String      @unique
+  title             String
+  description       String?
+  type              CouponType
+  scope             CouponScope @default(ORDER)
+  amountOffMinor    Int?
+  percentOff        Float?
+  minimumSubtotalMinor Int?
+  startsAt          DateTime?
+  endsAt            DateTime?
+  maxRedemptions    Int?
+  redemptionCount   Int         @default(0)
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  seller            Seller      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  product           Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  bundle            ProductBundle? @relation(fields: [bundleId], references: [id], onDelete: SetNull)
+  redemptions       CouponRedemption[]
+
+  @@index([sellerId, isActive])
+}
+
+model CouponRedemption {
+  id              String   @id @default(cuid())
+  couponId        String
+  buyerId         String
+  orderId         String?  @unique
+  discountMinor   Int
+  createdAt       DateTime @default(now())
+  coupon          Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  buyer           User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  order           Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([couponId, createdAt])
+  @@index([buyerId, createdAt])
+}
+
+model ProductBundle {
+  id            String   @id @default(cuid())
+  sellerId      String
+  slug          String
+  name          String
+  description   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  seller        Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  items         ProductBundleItem[]
+  coupons       Coupon[]
+
+  @@unique([sellerId, slug])
+  @@index([sellerId, isActive])
+}
+
+model ProductBundleItem {
+  id          String        @id @default(cuid())
+  bundleId    String
+  productId   String
+  quantity    Int           @default(1)
+  position    Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  bundle      ProductBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  product     Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([bundleId, productId])
+  @@index([bundleId, position])
+}
+
+model Campaign {
+  id             String         @id @default(cuid())
+  sellerId       String
+  slug           String
+  title          String
+  description    String?
+  status         CampaignStatus @default(DRAFT)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  seller         Seller         @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  slots          CampaignSlot[]
+
+  @@unique([sellerId, slug])
+  @@index([status, startsAt])
+}
+
+model CampaignSlot {
+  id           String           @id @default(cuid())
+  campaignId   String
+  videoPostId  String?
+  productId    String?
+  slotType     CampaignSlotType
+  position     Int              @default(0)
+  boostScore   Float            @default(0)
+  startsAt     DateTime?
+  endsAt       DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  campaign     Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  videoPost    VideoPost?       @relation("CampaignSlotVideoPost", fields: [videoPostId], references: [id], onDelete: SetNull)
+  product      Product?         @relation("CampaignSlotProduct", fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, slotType, position])
+}
+
+model DeepLinkEvent {
+  id            String             @id @default(cuid())
+  userId        String?
+  orderId       String?
+  targetType    DeepLinkTargetType
+  targetId      String
+  source        String?
+  metadata      Json?
+  createdAt     DateTime           @default(now())
+  user          User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  order         Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([targetType, targetId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model AuditLog {

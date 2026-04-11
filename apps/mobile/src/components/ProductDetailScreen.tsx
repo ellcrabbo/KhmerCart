@@ -1,4 +1,4 @@
-import type { BuyerProductDetail } from "../api/client";
+import type { BuyerProductDetail, ProductReviewSummary } from "../api/client";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -21,26 +21,40 @@ type ProductDetailScreenProps = {
   canAddToCart: boolean;
   cartCount: number;
   errorMessage: string | null;
+  isFollowingSeller: boolean;
   isAddingToCart: boolean;
   isLoading: boolean;
+  isReviewLoading: boolean;
+  isSaved: boolean;
   locale: BuyerLocale;
-  onAddToCart: (variantId: string) => void;
+  onAddToCart: (variantId: string, quantity?: number) => void;
   onBack: () => void;
   onOpenCart: () => void;
+  onToggleFollowSeller: () => void;
+  onToggleSaveProduct: () => void;
   product: BuyerProductDetail | null;
+  reviews: ProductReviewSummary | null;
+  reviewsError: string | null;
 };
 
 export function ProductDetailScreen({
   canAddToCart,
   cartCount,
   errorMessage,
+  isFollowingSeller,
   isAddingToCart,
   isLoading,
+  isReviewLoading,
+  isSaved,
   locale,
   onAddToCart,
   onBack,
   onOpenCart,
-  product
+  onToggleFollowSeller,
+  onToggleSaveProduct,
+  product,
+  reviews,
+  reviewsError
 }: ProductDetailScreenProps) {
   const dictionary = getBuyerDictionary(locale);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
@@ -119,11 +133,46 @@ export function ProductDetailScreen({
               <Text style={styles.statLabel}>{dictionary.seller}</Text>
               <Text style={styles.statValue}>{product.seller.displayName}</Text>
             </View>
+
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>Rating</Text>
+              <Text style={styles.statValue}>
+                {product.sellerRating?.reviewCount
+                  ? `${product.sellerRating.averageRating.toFixed(1)} ★`
+                  : "New"}
+              </Text>
+            </View>
           </View>
 
           {publishedAt ? (
             <Text style={styles.metaLine}>{publishedAt}</Text>
           ) : null}
+
+          <View style={styles.quickActionRow}>
+            <Pressable
+              onPress={onToggleSaveProduct}
+              style={({ pressed }) => [
+                styles.quickActionButton,
+                pressed ? styles.buttonPressed : null
+              ]}
+            >
+              <Text style={styles.quickActionButtonText}>
+                {isSaved ? "Saved" : "Save product"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={onToggleFollowSeller}
+              style={({ pressed }) => [
+                styles.quickActionButton,
+                pressed ? styles.buttonPressed : null
+              ]}
+            >
+              <Text style={styles.quickActionButtonText}>
+                {isFollowingSeller ? "Following seller" : "Follow seller"}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -245,6 +294,61 @@ export function ProductDetailScreen({
             </Text>
           </View>
         </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionLabel}>Trust</Text>
+        <View style={styles.disclosureList}>
+          <View style={styles.disclosureCard}>
+            <Text style={styles.disclosureLabel}>Seller rating</Text>
+            <Text style={styles.disclosureValue}>
+              {product.sellerRating?.reviewCount
+                ? `${product.sellerRating.averageRating.toFixed(1)} from ${product.sellerRating.reviewCount} reviews`
+                : "No seller reviews yet."}
+            </Text>
+          </View>
+          <View style={styles.disclosureCard}>
+            <Text style={styles.disclosureLabel}>Product reviews</Text>
+            <Text style={styles.disclosureValue}>
+              {product.reviewSummary?.reviewCount
+                ? `${product.reviewSummary.averageRating.toFixed(1)} average across ${product.reviewSummary.reviewCount} reviews`
+                : "No product reviews yet."}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionLabel}>Recent reviews</Text>
+        {isReviewLoading ? (
+          <ActivityIndicator color={palette.accent} />
+        ) : reviewsError ? (
+          <Text style={styles.disclosureValue}>{reviewsError}</Text>
+        ) : reviews?.entries.length ? (
+          <View style={styles.reviewList}>
+            {reviews.entries.slice(0, 4).map((entry) => (
+              <View key={entry.id} style={styles.reviewCard}>
+                <View style={styles.reviewHeader}>
+                  <Text style={styles.reviewBuyer}>{entry.buyerName}</Text>
+                  <Text style={styles.reviewMeta}>{entry.rating.toFixed(1)} ★</Text>
+                </View>
+                {entry.headline ? (
+                  <Text style={styles.reviewHeadline}>{entry.headline}</Text>
+                ) : null}
+                <Text style={styles.reviewBody}>
+                  {entry.body || "Verified buyer review."}
+                </Text>
+                <Text style={styles.reviewMeta}>
+                  {formatDateTime(locale, entry.createdAt)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.disclosureValue}>
+            Reviews will appear here as completed buyers start rating the product.
+          </Text>
+        )}
       </View>
     </ScrollView>
   );
@@ -384,6 +488,57 @@ const styles = StyleSheet.create({
     color: palette.card,
     fontSize: 15,
     fontWeight: "700"
+  },
+  quickActionButton: {
+    backgroundColor: palette.sunMuted,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  quickActionButtonText: {
+    color: palette.sun,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  quickActionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10
+  },
+  reviewBody: {
+    color: palette.ink,
+    fontSize: 14,
+    lineHeight: 21
+  },
+  reviewBuyer: {
+    color: palette.ink,
+    fontSize: 14,
+    fontWeight: "700"
+  },
+  reviewCard: {
+    backgroundColor: "#fffefb",
+    borderColor: palette.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 8,
+    padding: 16
+  },
+  reviewHeader: {
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between"
+  },
+  reviewHeadline: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: "700"
+  },
+  reviewList: {
+    gap: 12
+  },
+  reviewMeta: {
+    color: palette.muted,
+    fontSize: 12
   },
   secondaryButton: {
     alignItems: "center",

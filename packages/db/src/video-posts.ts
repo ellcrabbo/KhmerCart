@@ -5,6 +5,7 @@ import {
   Prisma,
   ProductModerationStatus,
   ProductStatus,
+  VideoPostModerationStatus,
   VideoPostStatus
 } from "./prisma-client";
 import { prisma } from "./prisma";
@@ -21,6 +22,25 @@ type BuyerVideoCursor = {
 };
 
 const publicVideoPostInclude = {
+  attachments: {
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true
+        }
+      }
+    },
+    orderBy: [{ isPrimary: "desc" }, { position: "asc" }]
+  },
+  campaignSlots: {
+    select: {
+      boostScore: true,
+      slotType: true
+    }
+  },
+  metrics: true,
   product: {
     include: {
       images: {
@@ -62,6 +82,19 @@ const publicVideoPostInclude = {
 } satisfies Prisma.VideoPostInclude;
 
 const sellerVideoPostInclude = {
+  attachments: {
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true
+        }
+      }
+    },
+    orderBy: [{ isPrimary: "desc" }, { position: "asc" }]
+  },
+  metrics: true,
   product: {
     select: {
       id: true,
@@ -112,7 +145,9 @@ export class VideoPostServiceError extends Error {
 
 export type BuyerVideoFeedItem = {
   caption: string;
+  campaignBadges: string[];
   id: string;
+  isPinned: boolean;
   product: {
     category: string;
     description: string;
@@ -133,6 +168,15 @@ export type BuyerVideoFeedItem = {
       currency: Currency;
       priceMinor: number;
     };
+    variants: Array<{
+      availableQuantity: number;
+      compareAtPriceMinor: number | null;
+      currency: Currency;
+      id: string;
+      name: string;
+      priceMinor: number;
+      sku: string;
+    }>;
     seller: {
       contact: string;
       displayName: string;
@@ -150,6 +194,11 @@ export type BuyerVideoFeedItem = {
     displayName: string;
     slug: string;
   };
+  shoppableProducts: Array<{
+    id: string;
+    name: string;
+    slug: string;
+  }>;
   video: {
     aspectRatio: number | null;
     durationSec: number | null;
@@ -171,10 +220,27 @@ export type SellerVideoPostUploadRequest = {
 };
 
 export type SellerVideoPost = {
+  analytics: {
+    addToCarts: number;
+    conversions: number;
+    impressions: number;
+    opens: number;
+    productOpens: number;
+  };
+  attachments: Array<{
+    id: string;
+    isPrimary: boolean;
+    name: string;
+    productId: string;
+    slug: string;
+  }>;
   caption: string;
   createdAt: string;
   id: string;
+  moderationNotes: string | null;
+  moderationStatus: VideoPostModerationStatus;
   posterUrl: string | null;
+  processingError: string | null;
   product: {
     currency: Currency | null;
     id: string;
@@ -202,6 +268,7 @@ export type SellerVideoPostsData = {
 };
 
 type CreateSellerVideoPostInput = {
+  attachmentProductIds?: string[];
   actorUserId?: string;
   aspectRatio?: number | null;
   caption?: string;
@@ -220,6 +287,17 @@ type RequestSellerVideoPostUploadInput = {
   fileName?: string;
   fileRole?: string;
   userId: string;
+};
+
+type RecordVideoPostMetricInput = {
+  eventType:
+    | "IMPRESSION"
+    | "VIEWER_OPEN"
+    | "PRODUCT_OPEN"
+    | "ADD_TO_CART"
+    | "CHECKOUT_START"
+    | "ORDER_CONVERSION";
+  videoPostId: string;
 };
 
 function serializeDate(value: Date | null | undefined): string | null {
@@ -353,6 +431,22 @@ function validateContentType(fileRole: "POSTER" | "VIDEO", contentType: string) 
 function parseStatus(value: string | undefined): VideoPostStatus {
   const normalized = value?.trim().toUpperCase();
 
+  if (normalized === VideoPostStatus.UPLOADING) {
+    return VideoPostStatus.UPLOADING;
+  }
+
+  if (normalized === VideoPostStatus.PROCESSING) {
+    return VideoPostStatus.PROCESSING;
+  }
+
+  if (normalized === VideoPostStatus.READY) {
+    return VideoPostStatus.READY;
+  }
+
+  if (normalized === VideoPostStatus.FAILED) {
+    return VideoPostStatus.FAILED;
+  }
+
   if (normalized === VideoPostStatus.PUBLISHED) {
     return VideoPostStatus.PUBLISHED;
   }
@@ -446,6 +540,7 @@ async function getSellerProfileForUser(userId: string) {
 
 function createPublicVideoPostWhere(): Prisma.VideoPostWhereInput {
   return {
+    moderationStatus: VideoPostModerationStatus.APPROVED,
     product: {
       is: {
         moderationStatus: ProductModerationStatus.APPROVED,
@@ -485,6 +580,53 @@ function createPublicVideoPostWhere(): Prisma.VideoPostWhereInput {
   };
 }
 
+function aggregateMetrics(
+  metrics: Array<{
+    addToCarts: number;
+    conversions: number;
+    impressions: number;
+    opens: number;
+    productOpens: number;
+  }>
+) {
+  return metrics.reduce(
+    (totals, metric) => ({
+      addToCarts: totals.addToCarts + metric.addToCarts,
+      conversions: totals.conversions + metric.conversions,
+      impressions: totals.impressions + metric.impressions,
+      opens: totals.opens + metric.opens,
+      productOpens: totals.productOpens + metric.productOpens
+    }),
+    {
+      addToCarts: 0,
+      conversions: 0,
+      impressions: 0,
+      opens: 0,
+      productOpens: 0
+    }
+  );
+}
+
+function rankVideoPost(record: PublicVideoPostRecord) {
+  const metrics = aggregateMetrics(record.metrics);
+  const campaignBoost = record.campaignSlots.reduce(
+    (sum, slot) => sum + slot.boostScore,
+    0
+  );
+  const conversionBoost =
+    metrics.impressions > 0 ? (metrics.conversions / metrics.impressions) * 100 : 0;
+  const inventoryBoost = sumAvailableInventory(record.product) > 0 ? 3 : -5;
+
+  return (
+    (record.isPinned ? 1000 : 0) +
+    record.manualBoost +
+    record.featuredScore +
+    campaignBoost +
+    conversionBoost +
+    inventoryBoost
+  );
+}
+
 async function mapBuyerVideoFeedItem(record: PublicVideoPostRecord): Promise<BuyerVideoFeedItem> {
   const leadVariant = resolvePublicLeadVariant(record.product);
   const availableQuantity = sumAvailableInventory(record.product);
@@ -496,7 +638,9 @@ async function mapBuyerVideoFeedItem(record: PublicVideoPostRecord): Promise<Buy
 
   return {
     caption: record.caption,
+    campaignBadges: record.campaignSlots.map((slot) => slot.slotType),
     id: record.id,
+    isPinned: record.isPinned,
     product: {
       category: record.product.category ?? "",
       description: record.product.description ?? "",
@@ -509,6 +653,13 @@ async function mapBuyerVideoFeedItem(record: PublicVideoPostRecord): Promise<Buy
         currency: leadVariant.currency,
         priceMinor: leadVariant.priceMinor
       },
+      variants: record.product.variants.flatMap((variant) => {
+        if (variant.currency === null || variant.priceMinor === null) {
+          return [];
+        }
+
+        return [mapLeadVariant(variant as typeof variant & { currency: Currency; priceMinor: number })];
+      }),
       seller: {
         contact: resolveSellerContact(record.product.seller),
         displayName: record.product.seller.displayName,
@@ -526,6 +677,11 @@ async function mapBuyerVideoFeedItem(record: PublicVideoPostRecord): Promise<Buy
       displayName: record.seller.displayName,
       slug: record.seller.slug
     },
+    shoppableProducts: record.attachments.map((attachment) => ({
+      id: attachment.product.id,
+      name: attachment.product.name,
+      slug: attachment.product.slug
+    })),
     video: {
       aspectRatio: record.aspectRatio ?? null,
       durationSec: record.durationSec ?? null,
@@ -542,10 +698,21 @@ async function mapSellerVideoPost(record: SellerVideoPostRecord): Promise<Seller
   ]);
 
   return {
+    analytics: aggregateMetrics(record.metrics),
+    attachments: record.attachments.map((attachment) => ({
+      id: attachment.id,
+      isPrimary: attachment.isPrimary,
+      name: attachment.product.name,
+      productId: attachment.product.id,
+      slug: attachment.product.slug
+    })),
     caption: record.caption,
     createdAt: record.createdAt.toISOString(),
     id: record.id,
+    moderationNotes: record.moderationNotes ?? null,
+    moderationStatus: record.moderationStatus,
     posterUrl,
+    processingError: record.processingError ?? null,
     product: {
       currency: record.product.variants[0]?.currency ?? null,
       id: record.product.id,
@@ -608,6 +775,11 @@ export async function createSellerVideoPost(
   const videoKey = input.videoKey?.trim();
   const posterKey = input.posterKey?.trim() || null;
   const desiredStatus = parseStatus(input.status);
+  const attachmentProductIds = [
+    ...new Set(
+      (input.attachmentProductIds ?? []).map((value) => value.trim()).filter(Boolean)
+    )
+  ];
 
   if (!caption) {
     throw new VideoPostServiceError("BAD_REQUEST", "Caption is required.", 400);
@@ -633,6 +805,28 @@ export async function createSellerVideoPost(
     throw new VideoPostServiceError("NOT_FOUND", "Product not found for this seller.", 404);
   }
 
+  const attachmentProducts = attachmentProductIds.length
+    ? await prisma.product.findMany({
+        select: {
+          id: true
+        },
+        where: {
+          id: {
+            in: attachmentProductIds
+          },
+          sellerId: seller.id
+        }
+      })
+    : [];
+
+  if (attachmentProductIds.length > 0 && attachmentProducts.length !== attachmentProductIds.length) {
+    throw new VideoPostServiceError(
+      "BAD_REQUEST",
+      "Every attached product must belong to the current seller.",
+      400
+    );
+  }
+
   if (
     desiredStatus === VideoPostStatus.PUBLISHED &&
     !canSellerListProducts(seller.kycStatus)
@@ -656,7 +850,7 @@ export async function createSellerVideoPost(
     );
   }
 
-  const created = await prisma.$transaction(async (tx) => {
+  const createdId = await prisma.$transaction(async (tx) => {
     const post = await tx.videoPost.create({
       data: {
         aspectRatio:
@@ -668,7 +862,17 @@ export async function createSellerVideoPost(
           typeof input.durationSec === "number" && Number.isFinite(input.durationSec)
             ? Math.max(1, Math.round(input.durationSec))
             : null,
+        moderationStatus:
+          desiredStatus === VideoPostStatus.PUBLISHED
+            ? VideoPostModerationStatus.APPROVED
+            : VideoPostModerationStatus.PENDING,
         posterKey,
+        processedAt:
+          desiredStatus === VideoPostStatus.READY || desiredStatus === VideoPostStatus.PUBLISHED
+            ? new Date()
+            : null,
+        processingStartedAt:
+          desiredStatus === VideoPostStatus.PROCESSING ? new Date() : null,
         productId: product.id,
         publishedAt: desiredStatus === VideoPostStatus.PUBLISHED ? new Date() : null,
         sellerId: seller.id,
@@ -678,11 +882,33 @@ export async function createSellerVideoPost(
       include: sellerVideoPostInclude
     });
 
+    if (attachmentProductIds.length > 0) {
+      await tx.videoPostAttachment.createMany({
+        data: attachmentProductIds.map((attachedProductId, index) => ({
+          isPrimary: attachedProductId === product.id || index === 0,
+          position: index,
+          productId: attachedProductId,
+          videoPostId: post.id
+        })),
+        skipDuplicates: true
+      });
+    } else {
+      await tx.videoPostAttachment.create({
+        data: {
+          isPrimary: true,
+          position: 0,
+          productId: product.id,
+          videoPostId: post.id
+        }
+      });
+    }
+
     await recordAuditLog(tx, {
       action: "VIDEO_POST_CREATED",
       actorUserId: input.actorUserId ?? input.userId,
       afterData: {
         caption: post.caption,
+        moderationStatus: post.moderationStatus,
         productId: post.productId,
         publishedAt: serializeDate(post.publishedAt),
         status: post.status,
@@ -694,7 +920,14 @@ export async function createSellerVideoPost(
       userAgent: input.userAgent
     });
 
-    return post;
+    return post.id;
+  });
+
+  const created = await prisma.videoPost.findUniqueOrThrow({
+    include: sellerVideoPostInclude,
+    where: {
+      id: createdId
+    }
   });
 
   return mapSellerVideoPost(created);
@@ -723,6 +956,56 @@ export async function getSellerVideoPostsData(userId: string): Promise<SellerVid
     posts: await Promise.all(posts.map(mapSellerVideoPost)),
     sellerCanPublishPosts: canSellerListProducts(seller.kycStatus),
     sellerId: seller.id
+  };
+}
+
+export async function recordVideoPostMetric(
+  input: RecordVideoPostMetricInput
+) {
+  const metricDate = new Date();
+  metricDate.setHours(0, 0, 0, 0);
+
+  await prisma.videoPostMetricDaily.upsert({
+    create: {
+      addToCarts: input.eventType === "ADD_TO_CART" ? 1 : 0,
+      checkoutStarts: input.eventType === "CHECKOUT_START" ? 1 : 0,
+      conversions: input.eventType === "ORDER_CONVERSION" ? 1 : 0,
+      impressions: input.eventType === "IMPRESSION" ? 1 : 0,
+      metricDate,
+      opens: input.eventType === "VIEWER_OPEN" ? 1 : 0,
+      productOpens: input.eventType === "PRODUCT_OPEN" ? 1 : 0,
+      videoPostId: input.videoPostId
+    },
+    update: {
+      addToCarts: {
+        increment: input.eventType === "ADD_TO_CART" ? 1 : 0
+      },
+      checkoutStarts: {
+        increment: input.eventType === "CHECKOUT_START" ? 1 : 0
+      },
+      conversions: {
+        increment: input.eventType === "ORDER_CONVERSION" ? 1 : 0
+      },
+      impressions: {
+        increment: input.eventType === "IMPRESSION" ? 1 : 0
+      },
+      opens: {
+        increment: input.eventType === "VIEWER_OPEN" ? 1 : 0
+      },
+      productOpens: {
+        increment: input.eventType === "PRODUCT_OPEN" ? 1 : 0
+      }
+    },
+    where: {
+      videoPostId_metricDate: {
+        metricDate,
+        videoPostId: input.videoPostId
+      }
+    }
+  });
+
+  return {
+    success: true
   };
 }
 
@@ -778,8 +1061,18 @@ export async function getBuyerVideoFeed(input?: {
         })
       : null;
 
+  const rankedPosts = [...posts].sort((left, right) => {
+    const rankDelta = rankVideoPost(right) - rankVideoPost(left);
+
+    if (rankDelta !== 0) {
+      return rankDelta;
+    }
+
+    return (right.publishedAt ?? right.updatedAt).getTime() - (left.publishedAt ?? left.updatedAt).getTime();
+  });
+
   return {
-    items: await Promise.all(posts.map(mapBuyerVideoFeedItem)),
+    items: await Promise.all(rankedPosts.map(mapBuyerVideoFeedItem)),
     nextCursor
   };
 }

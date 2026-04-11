@@ -6,6 +6,7 @@ export * from "./catalog";
 export * from "./checkout";
 export * from "./health";
 export * from "./ledger";
+export * from "./marketplace";
 export * from "./orders";
 export * from "./payments";
 export * from "./prisma";

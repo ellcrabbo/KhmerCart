@@ -110,7 +110,9 @@ export type BuyerFeedResult = {
 
 export type BuyerVideoFeedItem = {
   caption: string
+  campaignBadges: string[]
   id: string
+  isPinned: boolean
   product: {
     category: string
     description: string
@@ -131,6 +133,15 @@ export type BuyerVideoFeedItem = {
       currency: Currency
       priceMinor: number
     }
+    variants: Array<{
+      availableQuantity: number
+      compareAtPriceMinor: number | null
+      currency: Currency
+      id: string
+      name: string
+      priceMinor: number
+      sku: string
+    }>
     seller: {
       contact: string
       displayName: string
@@ -148,6 +159,11 @@ export type BuyerVideoFeedItem = {
     displayName: string
     slug: string
   }
+  shoppableProducts: Array<{
+    id: string
+    name: string
+    slug: string
+  }>
   video: {
     aspectRatio: number | null
     durationSec: number | null
@@ -168,7 +184,62 @@ export type BuyerProductDetail = BuyerFeedItem & {
     sellerContact: string
   }
   images: BuyerCatalogImage[]
+  sellerRating?: {
+    averageRating: number
+    reviewCount: number
+  }
+  reviewSummary?: {
+    averageRating: number
+    reviewCount: number
+  }
   variants: BuyerCatalogVariant[]
+}
+
+export type ProductReviewSummary = {
+  averageRating: number
+  entries: Array<{
+    body: string
+    buyerName: string
+    createdAt: string
+    headline: string | null
+    id: string
+    rating: number
+  }>
+  reviewCount: number
+}
+
+export type SavedProductEntry = {
+  createdAt: string
+  id: string
+  product: {
+    id: string
+    imageUrl: string | null
+    name: string
+    priceMinor: number | null
+    sellerSlug: string
+    slug: string
+  }
+}
+
+export type FollowedSellerEntry = {
+  createdAt: string
+  id: string
+  seller: {
+    displayName: string
+    followerCount: number
+    id: string
+    slug: string
+  }
+}
+
+export type NotificationEntry = {
+  actionUrl: string | null
+  body: string
+  createdAt: string
+  id: string
+  isRead: boolean
+  kind: string
+  title: string
 }
 
 export type BuyerCartItem = {
@@ -428,10 +499,27 @@ export type SellerShippingQueueData = {
 }
 
 export type SellerVideoPost = {
+  analytics: {
+    addToCarts: number
+    conversions: number
+    impressions: number
+    opens: number
+    productOpens: number
+  }
+  attachments: Array<{
+    id: string
+    isPrimary: boolean
+    name: string
+    productId: string
+    slug: string
+  }>
   caption: string
   createdAt: string
   id: string
+  moderationNotes: string | null
+  moderationStatus: string
   posterUrl: string | null
+  processingError: string | null
   product: {
     currency: Currency | null
     id: string
@@ -443,7 +531,7 @@ export type SellerVideoPost = {
     status: string
   }
   publishedAt: string | null
-  status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
+  status: "DRAFT" | "UPLOADING" | "PROCESSING" | "READY" | "FAILED" | "PUBLISHED" | "ARCHIVED"
   updatedAt: string
   video: {
     aspectRatio: number | null
@@ -472,7 +560,7 @@ export type CheckoutConfigResponse = {
 type JsonRequestOptions = {
   body?: unknown
   headers?: Record<string, string>
-  method?: "GET" | "POST"
+  method?: "GET" | "POST" | "PATCH"
   token?: string | null
 }
 
@@ -534,12 +622,13 @@ export type SaveSellerShipmentInput = {
 }
 
 export type CreateSellerVideoPostInput = {
+  attachmentProductIds?: string[] | null
   aspectRatio?: number | null
   caption?: string | null
   durationSec?: number | null
   posterKey?: string | null
   productId?: string | null
-  status?: "DRAFT" | "PUBLISHED" | "ARCHIVED" | null
+  status?: "DRAFT" | "UPLOADING" | "PROCESSING" | "READY" | "FAILED" | "PUBLISHED" | "ARCHIVED" | null
   videoKey?: string | null
 }
 
@@ -818,6 +907,90 @@ export async function createSellerVideoPost(token: string, input: CreateSellerVi
   return requestSellerJson<SellerVideoPost>("/api/video-posts", {
     body: input,
     method: "POST",
+    token
+  })
+}
+
+export async function recordVideoFeedMetric(
+  input: {
+    eventType:
+      | "IMPRESSION"
+      | "VIEWER_OPEN"
+      | "PRODUCT_OPEN"
+      | "ADD_TO_CART"
+      | "CHECKOUT_START"
+      | "ORDER_CONVERSION"
+    videoPostId: string
+  }
+) {
+  return requestJson<{ success: boolean }>("/api/video-feed/metrics", {
+    body: input,
+    method: "POST"
+  })
+}
+
+export async function readProductReviews(slug: string) {
+  return requestJson<ProductReviewSummary>(`/api/products/${encodeURIComponent(slug)}/reviews`)
+}
+
+export async function createProductReview(
+  token: string,
+  slug: string,
+  input: {
+    body?: string | null
+    headline?: string | null
+    orderId: string
+    rating: number
+  }
+) {
+  return requestJson<{ createdAt: string; id: string }>(
+    `/api/products/${encodeURIComponent(slug)}/reviews`,
+    {
+      body: input,
+      method: "POST",
+      token
+    }
+  )
+}
+
+export async function toggleSavedProductState(token: string, productId: string) {
+  return requestJson<{ saved: boolean }>(`/api/products/${encodeURIComponent(productId)}/save`, {
+    method: "POST",
+    token
+  })
+}
+
+export async function toggleFollowedSellerState(token: string, sellerId: string) {
+  return requestJson<{ following: boolean }>(`/api/sellers/${encodeURIComponent(sellerId)}/follow`, {
+    method: "POST",
+    token
+  })
+}
+
+export async function readSavedProducts(token: string) {
+  return requestJson<SavedProductEntry[]>("/api/account/saved-products", {
+    token
+  })
+}
+
+export async function readFollowedSellers(token: string) {
+  return requestJson<FollowedSellerEntry[]>("/api/account/followed-sellers", {
+    token
+  })
+}
+
+export async function readNotifications(token: string) {
+  return requestJson<NotificationEntry[]>("/api/notifications", {
+    token
+  })
+}
+
+export async function markNotificationAsRead(token: string, notificationId: string) {
+  return requestJson<{ success: boolean }>("/api/notifications", {
+    body: {
+      notificationId
+    },
+    method: "PATCH",
     token
   })
 }

@@ -11,7 +11,9 @@ import {
   Prisma,
   ProductModerationStatus,
   ProductStatus,
-  UserRole
+  UserRole,
+  VideoPostModerationStatus,
+  VideoPostStatus
 } from "./prisma-client";
 import type { DisputeReason, KycStatus, PaymentMethod, PaymentStatus } from "./prisma-client";
 import { prisma } from "./prisma";
@@ -34,6 +36,29 @@ export type ProductModerationQueueEntry = {
   status: ProductStatus;
   updatedAt: string;
   variantCount: number;
+};
+
+export type VideoPostModerationQueueEntry = {
+  addToCarts: number;
+  caption: string;
+  createdAt: string;
+  id: string;
+  impressions: number;
+  moderationNotes: string;
+  moderationStatus: VideoPostModerationStatus;
+  posterUrl: string | null;
+  product: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  seller: {
+    displayName: string;
+    id: string;
+    slug: string;
+  };
+  status: VideoPostStatus;
+  updatedAt: string;
 };
 
 export type DisputeListEntry = {
@@ -591,6 +616,129 @@ export async function decideProductModeration(input: {
     return {
       id: updatedProduct.id,
       moderationStatus: updatedProduct.moderationStatus
+    };
+  });
+}
+
+export async function listVideoPostModerationQueue(): Promise<VideoPostModerationQueueEntry[]> {
+  const posts = await prisma.videoPost.findMany({
+    include: {
+      metrics: true,
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true
+        }
+      },
+      seller: {
+        select: {
+          displayName: true,
+          id: true,
+          slug: true
+        }
+      }
+    },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    where: {
+      moderationStatus: {
+        in: [
+          VideoPostModerationStatus.PENDING,
+          VideoPostModerationStatus.REJECTED,
+          VideoPostModerationStatus.HIDDEN
+        ]
+      }
+    }
+  });
+
+  return posts.map((post) => ({
+    addToCarts: post.metrics.reduce((sum, metric) => sum + metric.addToCarts, 0),
+    caption: post.caption,
+    createdAt: post.createdAt.toISOString(),
+    id: post.id,
+    impressions: post.metrics.reduce((sum, metric) => sum + metric.impressions, 0),
+    moderationNotes: post.moderationNotes ?? "",
+    moderationStatus: post.moderationStatus,
+    posterUrl: post.posterKey ?? null,
+    product: post.product,
+    seller: post.seller,
+    status: post.status,
+    updatedAt: post.updatedAt.toISOString()
+  }));
+}
+
+export async function decideVideoPostModeration(input: {
+  actorUserId: string;
+  decision: "APPROVE" | "REJECT" | "HIDE";
+  ipAddress?: string | null;
+  note?: string;
+  userAgent?: string | null;
+  videoPostId: string;
+}) {
+  if (input.decision !== "APPROVE" && !input.note?.trim()) {
+    throw new SellerServiceError("BAD_REQUEST", "A moderation note is required.", 400);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const post = await tx.videoPost.findUnique({
+      where: {
+        id: input.videoPostId
+      }
+    });
+
+    if (!post) {
+      throw new SellerServiceError("NOT_FOUND", "Video post not found.", 404);
+    }
+
+    const updated = await tx.videoPost.update({
+      data:
+        input.decision === "APPROVE"
+          ? {
+              moderationNotes: input.note?.trim() || null,
+              moderationStatus: VideoPostModerationStatus.APPROVED,
+              publishedAt: post.status === VideoPostStatus.PUBLISHED ? post.publishedAt ?? new Date() : post.publishedAt
+            }
+          : input.decision === "HIDE"
+            ? {
+                moderationNotes: input.note?.trim() || null,
+                moderationStatus: VideoPostModerationStatus.HIDDEN
+              }
+            : {
+                moderationNotes: input.note?.trim() || null,
+                moderationStatus: VideoPostModerationStatus.REJECTED
+              },
+      where: {
+        id: post.id
+      }
+    });
+
+    await recordAuditLog(tx, {
+      action:
+        input.decision === "APPROVE"
+          ? "VIDEO_POST_APPROVED"
+          : input.decision === "HIDE"
+            ? "VIDEO_POST_HIDDEN"
+            : "VIDEO_POST_REJECTED",
+      actorUserId: input.actorUserId,
+      afterData: {
+        moderationNotes: updated.moderationNotes,
+        moderationStatus: updated.moderationStatus,
+        status: updated.status
+      },
+      beforeData: {
+        moderationNotes: post.moderationNotes,
+        moderationStatus: post.moderationStatus,
+        status: post.status
+      },
+      entityId: updated.id,
+      entityType: "VideoPost",
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent
+    });
+
+    return {
+      id: updated.id,
+      moderationStatus: updated.moderationStatus
     };
   });
 }

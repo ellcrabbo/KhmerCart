@@ -1,7 +1,8 @@
 import {
   KycStatus,
   ProductModerationStatus,
-  ProductStatus
+  ProductStatus,
+  ReviewStatus
 } from "./prisma-client";
 import type { Currency, Prisma } from "./prisma-client";
 import { prisma } from "./prisma";
@@ -18,6 +19,12 @@ const buyerProductInclude = {
   seller: {
     select: {
       displayName: true,
+      reviewAggregate: {
+        select: {
+          averageRating: true,
+          reviewCount: true
+        }
+      },
       slug: true,
       supportEmail: true,
       supportPhone: true
@@ -95,6 +102,10 @@ export type BuyerLeadVariant = Pick<
 export type BuyerCatalogSeller = {
   contact: string;
   displayName: string;
+  ratingSummary?: {
+    averageRating: number;
+    reviewCount: number;
+  };
   slug: string;
 };
 
@@ -132,6 +143,14 @@ export type BuyerProductDetail = BuyerFeedItem & {
     sellerContact: string;
   };
   images: BuyerCatalogImage[];
+  reviewSummary: {
+    averageRating: number;
+    reviewCount: number;
+  };
+  sellerRating: {
+    averageRating: number;
+    reviewCount: number;
+  };
   variants: BuyerCatalogVariant[];
 };
 
@@ -330,11 +349,20 @@ function mapBuyerFeedItem(product: BuyerProductRecord): BuyerFeedItem {
       priceMinor: leadVariant.priceMinor
     },
     publishedAt: (product.publishedAt ?? product.updatedAt).toISOString(),
-    seller: {
-      contact: resolveSellerContact(product),
-      displayName: product.seller.displayName,
-      slug: product.seller.slug
-    },
+      seller: {
+        contact: resolveSellerContact(product),
+        displayName: product.seller.displayName,
+        ratingSummary: product.seller.reviewAggregate
+          ? {
+              averageRating: product.seller.reviewAggregate.averageRating,
+              reviewCount: product.seller.reviewAggregate.reviewCount
+            }
+          : {
+              averageRating: 0,
+              reviewCount: 0
+            },
+        slug: product.seller.slug
+      },
     slug: product.slug,
     stock: {
       availableQuantity,
@@ -343,7 +371,10 @@ function mapBuyerFeedItem(product: BuyerProductRecord): BuyerFeedItem {
   };
 }
 
-function mapBuyerProductDetail(product: BuyerProductRecord): BuyerProductDetail {
+function mapBuyerProductDetail(
+  product: BuyerProductRecord,
+  reviewCount: number
+): BuyerProductDetail {
   const feedItem = mapBuyerFeedItem(product);
 
   return {
@@ -359,6 +390,14 @@ function mapBuyerProductDetail(product: BuyerProductRecord): BuyerProductDetail 
       isPrimary: image.isPrimary,
       url: image.url
     })),
+    reviewSummary: {
+      averageRating: product.seller.reviewAggregate?.averageRating ?? 0,
+      reviewCount
+    },
+    sellerRating: {
+      averageRating: product.seller.reviewAggregate?.averageRating ?? 0,
+      reviewCount: product.seller.reviewAggregate?.reviewCount ?? 0
+    },
     variants: product.variants.flatMap((variant) => {
       if (variant.currency === null || variant.priceMinor === null) {
         return [];
@@ -450,17 +489,29 @@ export async function getBuyerProductBySlug(slug: string): Promise<BuyerProductD
     throw new BuyerCatalogError("BAD_REQUEST", "Product slug is required.", 400);
   }
 
-  const product = await prisma.product.findFirst({
-    include: buyerProductInclude,
-    where: {
-      ...createPublicProductWhere(),
-      slug: normalizedSlug
-    }
-  });
+  const [product, reviewCount] = await Promise.all([
+    prisma.product.findFirst({
+      include: buyerProductInclude,
+      where: {
+        ...createPublicProductWhere(),
+        slug: normalizedSlug
+      }
+    }),
+    prisma.productReview.count({
+      where: {
+        product: {
+          is: {
+            slug: normalizedSlug
+          }
+        },
+        status: ReviewStatus.PUBLISHED
+      }
+    })
+  ]);
 
   if (!product) {
     throw new BuyerCatalogError("NOT_FOUND", "Product not found.", 404);
   }
 
-  return mapBuyerProductDetail(product);
+  return mapBuyerProductDetail(product, reviewCount);
 }

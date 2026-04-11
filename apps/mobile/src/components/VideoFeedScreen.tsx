@@ -75,6 +75,21 @@ function VideoFeedCard({
             </View>
           </View>
 
+          {item.isPinned || item.campaignBadges.length > 0 ? (
+            <View style={styles.badgeRow}>
+              {item.isPinned ? (
+                <View style={styles.feedBadge}>
+                  <Text style={styles.feedBadgeText}>Pinned</Text>
+                </View>
+              ) : null}
+              {item.campaignBadges.slice(0, 2).map((badge) => (
+                <View key={`${item.id}-${badge}`} style={styles.feedBadge}>
+                  <Text style={styles.feedBadgeText}>{badge.replaceAll("_", " ")}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
           <View style={styles.overlayFooter}>
             <View style={styles.bottomRow}>
               <View style={styles.leftColumn}>
@@ -213,6 +228,12 @@ export function VideoFeedScreen({
 }
 
 const styles = StyleSheet.create({
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12
+  },
   actionBubble: {
     alignItems: "center",
     backgroundColor: "rgba(8, 7, 5, 0.48)",
@@ -243,6 +264,18 @@ const styles = StyleSheet.create({
     color: palette.card,
     fontSize: 15,
     lineHeight: 22
+  },
+  feedBadge: {
+    backgroundColor: "rgba(255, 250, 242, 0.16)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  feedBadgeText: {
+    color: palette.card,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase"
   },
   bottomRow: {
     alignItems: "flex-end",
