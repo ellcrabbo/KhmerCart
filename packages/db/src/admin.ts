@@ -17,6 +17,7 @@ import {
 } from "./prisma-client";
 import type { DisputeReason, KycStatus, PaymentMethod, PaymentStatus } from "./prisma-client";
 import { prisma } from "./prisma";
+import { createUserNotification } from "./marketplace";
 import { SellerServiceError } from "./seller";
 
 export type ProductModerationQueueEntry = {
@@ -735,6 +736,40 @@ export async function decideVideoPostModeration(input: {
       ipAddress: input.ipAddress,
       userAgent: input.userAgent
     });
+
+    const seller = await tx.seller.findUnique({
+      select: {
+        userId: true
+      },
+      where: {
+        id: post.sellerId
+      }
+    });
+
+    if (seller?.userId) {
+      await createUserNotification({
+        actionUrl: `/posts/${updated.id}`,
+        body:
+          input.decision === "APPROVE"
+            ? "Your video post is now approved for the buyer feed."
+            : input.decision === "HIDE"
+              ? "One of your video posts was hidden by moderation."
+              : "One of your video posts was rejected by moderation.",
+        kind: "VIDEO_POST_APPROVED",
+        metadata: {
+          moderationStatus: updated.moderationStatus,
+          videoPostId: updated.id
+        },
+        sellerId: post.sellerId,
+        title:
+          input.decision === "APPROVE"
+            ? "Video post approved"
+            : input.decision === "HIDE"
+              ? "Video post hidden"
+              : "Video post rejected",
+        userId: seller.userId
+      });
+    }
 
     return {
       id: updated.id,

@@ -37,6 +37,7 @@ type PostViewerScreenProps = {
   ) => void;
   onOpenCart: () => void;
   onOpenProduct: (slug: string) => void;
+  onSharePost: (postId: string) => Promise<void> | void;
 };
 
 type ViewerPageProps = {
@@ -50,6 +51,7 @@ type ViewerPageProps = {
   onBack: () => void;
   onOpenCart: () => void;
   onOpenProduct: (slug: string) => void;
+  onSharePost: () => void;
 };
 
 const screenHeight = Dimensions.get("window").height;
@@ -100,7 +102,8 @@ function ViewerPage({
   onAddToCart,
   onBack,
   onOpenCart,
-  onOpenProduct
+  onOpenProduct,
+  onSharePost
 }: ViewerPageProps) {
   const dictionary = getBuyerDictionary(locale);
   const [selectedVariantId, setSelectedVariantId] = useState<string>(item.product.leadVariant.id);
@@ -134,6 +137,9 @@ function ViewerPage({
         </View>
 
         <View style={styles.sideRail}>
+          <Pressable onPress={onSharePost} style={styles.sideBubble}>
+            <Text style={styles.sideLabel}>Share</Text>
+          </Pressable>
           {item.isPinned ? (
             <View style={styles.sideBubble}>
               <Text style={styles.sideLabel}>Pinned</Text>
@@ -240,7 +246,8 @@ export function PostViewerScreen({
   onBack,
   onMetric,
   onOpenCart,
-  onOpenProduct
+  onOpenProduct,
+  onSharePost
 }: PostViewerScreenProps) {
   const dictionary = getBuyerDictionary(locale);
   const listRef = useRef<FlatList<BuyerVideoFeedItem>>(null);
@@ -308,6 +315,9 @@ export function PostViewerScreen({
           onOpenProduct={(slug) => {
             onMetric("PRODUCT_OPEN", item.id);
             onOpenProduct(slug);
+          }}
+          onSharePost={() => {
+            void onSharePost(item.id);
           }}
         />
       )}

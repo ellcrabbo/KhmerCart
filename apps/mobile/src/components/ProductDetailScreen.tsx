@@ -293,6 +293,22 @@ export function ProductDetailScreen({
         </View>
       </View>
 
+      {product.bundles.length > 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Bundle offers</Text>
+          <View style={styles.bundleList}>
+            {product.bundles.map((bundle) => (
+              <View key={bundle.id} style={styles.bundleCard}>
+                <Text style={styles.bundleTitle}>{bundle.name}</Text>
+                <Text style={styles.disclosureValue}>
+                  {bundle.itemCount} bundled units across {bundle.productIds.length} products
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>{dictionary.disclosures}</Text>
         <View style={styles.disclosureList}>
@@ -514,6 +530,22 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.9
+  },
+  bundleCard: {
+    backgroundColor: "#fffefb",
+    borderColor: palette.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 8,
+    padding: 16
+  },
+  bundleList: {
+    gap: 12
+  },
+  bundleTitle: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: "700"
   },
   card: {
     backgroundColor: palette.card,

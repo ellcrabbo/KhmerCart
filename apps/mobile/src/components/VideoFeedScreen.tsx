@@ -26,6 +26,7 @@ type VideoFeedScreenProps = {
   onEndReached: () => void;
   onOpenPost: (postId: string) => void;
   onOpenProduct: (slug: string) => void;
+  onSharePost: (postId: string) => void;
 };
 
 type VideoFeedCardProps = {
@@ -33,6 +34,7 @@ type VideoFeedCardProps = {
   locale: BuyerLocale;
   onOpenPost: () => void;
   onOpenProduct: () => void;
+  onSharePost: () => void;
 };
 
 const windowHeight = Dimensions.get("window").height;
@@ -42,7 +44,8 @@ function VideoFeedCard({
   item,
   locale,
   onOpenPost,
-  onOpenProduct
+  onOpenProduct,
+  onSharePost
 }: VideoFeedCardProps) {
   const dictionary = getBuyerDictionary(locale);
   const priceLabel = formatMoney(
@@ -121,10 +124,10 @@ function VideoFeedCard({
                   <Text style={styles.actionEmoji}>♡</Text>
                   <Text style={styles.actionLabel}>Save</Text>
                 </View>
-                <View style={styles.actionBubble}>
+                <Pressable onPress={onSharePost} style={styles.actionBubble}>
                   <Text style={styles.actionEmoji}>↗</Text>
                   <Text style={styles.actionLabel}>Share</Text>
-                </View>
+                </Pressable>
                 <View style={styles.actionBubble}>
                   <Text style={styles.actionEmoji}>▣</Text>
                   <Text style={styles.actionLabel}>Shop</Text>
@@ -162,7 +165,8 @@ export function VideoFeedScreen({
   locale,
   onEndReached,
   onOpenPost,
-  onOpenProduct
+  onOpenProduct,
+  onSharePost
 }: VideoFeedScreenProps) {
   const dictionary = getBuyerDictionary(locale);
 
@@ -202,6 +206,7 @@ export function VideoFeedScreen({
           locale={locale}
           onOpenPost={() => onOpenPost(item.id)}
           onOpenProduct={() => onOpenProduct(item.product.slug)}
+          onSharePost={() => onSharePost(item.id)}
         />
       )}
       showsVerticalScrollIndicator={false}

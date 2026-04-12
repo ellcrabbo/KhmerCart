@@ -3,6 +3,7 @@ import type {
   BuyerCart,
   BuyerCheckoutPreview,
   BuyerCheckoutResult,
+  NotificationSummary,
   EligibleProductReviewOrder,
   FollowedSellerEntry,
   BuyerOrderTrackingData,
@@ -24,6 +25,7 @@ import type {
   SellerVideoPostsData,
 } from "./src/api/client";
 import {
+  createBuyerOrderDispute,
   createProductReview,
   createSellerVideoPost,
   createSellerProduct,
@@ -38,6 +40,7 @@ import {
   readCheckoutConfig,
   readOrderTracking,
   previewCheckout,
+  readNotificationSummary,
   readProduct,
   readProductReviewEligibility,
   readProductReviews,
@@ -46,6 +49,7 @@ import {
   readSellerDashboard,
   readSellerShippingQueue,
   readSellerVideoPosts,
+  recordDeepLink,
   recordVideoFeedMetric,
   requestSellerVideoPostUpload,
   requestOtp,
@@ -107,6 +111,7 @@ import {
   Alert,
   Linking,
   Pressable,
+  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -311,6 +316,9 @@ export default function App() {
     [],
   );
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
+  const [notificationSummary, setNotificationSummary] = useState<NotificationSummary>({
+    unreadCount: 0,
+  });
   const [isAccountDataLoading, setIsAccountDataLoading] = useState(false);
   const [accountDataError, setAccountDataError] = useState<string | null>(null);
 
@@ -345,6 +353,7 @@ export default function App() {
     useState<BuyerOrderTrackingData | null>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [isTrackingLoading, setIsTrackingLoading] = useState(false);
+  const [isSubmittingRefundRequest, setIsSubmittingRefundRequest] = useState(false);
 
   const apiBaseUrl = getApiBaseUrl();
   const dictionary = getBuyerDictionary(locale);
@@ -741,6 +750,7 @@ export default function App() {
       setSavedProducts([]);
       setFollowedSellers([]);
       setNotifications([]);
+      setNotificationSummary({ unreadCount: 0 });
       setAccountDataError(null);
       setIsAccountDataLoading(false);
       return;
@@ -753,10 +763,11 @@ export default function App() {
 
     void (async () => {
       try {
-        const [saved, followed, inbox] = await Promise.all([
+        const [saved, followed, inbox, summary] = await Promise.all([
           readSavedProducts(sessionToken),
           readFollowedSellers(sessionToken),
           readNotifications(sessionToken),
+          readNotificationSummary(sessionToken),
         ]);
 
         if (!isActive) {
@@ -766,6 +777,7 @@ export default function App() {
         setSavedProducts(saved);
         setFollowedSellers(followed);
         setNotifications(inbox);
+        setNotificationSummary(summary);
       } catch (error) {
         if (isActive) {
           setAccountDataError(
@@ -862,6 +874,7 @@ export default function App() {
       setSavedProducts([]);
       setFollowedSellers([]);
       setNotifications([]);
+      setNotificationSummary({ unreadCount: 0 });
       return;
     }
 
@@ -869,15 +882,17 @@ export default function App() {
     setAccountDataError(null);
 
     try {
-      const [saved, followed, inbox] = await Promise.all([
+      const [saved, followed, inbox, summary] = await Promise.all([
         readSavedProducts(token),
         readFollowedSellers(token),
         readNotifications(token),
+        readNotificationSummary(token),
       ]);
 
       setSavedProducts(saved);
       setFollowedSellers(followed);
       setNotifications(inbox);
+      setNotificationSummary(summary);
     } catch (error) {
       setAccountDataError(
         error instanceof Error
@@ -1090,6 +1105,7 @@ export default function App() {
     setSavedProducts([]);
     setFollowedSellers([]);
     setNotifications([]);
+    setNotificationSummary({ unreadCount: 0 });
   }
 
   function handleChangeSellerProfileField(
@@ -1795,6 +1811,31 @@ export default function App() {
     setActiveTab("orders");
   }
 
+  async function handleCreateRefundRequest(input: {
+    buyerMessage: string;
+    reason: "NOT_RECEIVED" | "DAMAGED" | "NOT_AS_DESCRIBED" | "OTHER";
+    requestedRefundMinor?: number | null;
+  }) {
+    if (!sessionToken || !trackingOrderId) {
+      return;
+    }
+
+    setIsSubmittingRefundRequest(true);
+    setTrackingError(null);
+
+    try {
+      await createBuyerOrderDispute(sessionToken, trackingOrderId, input);
+      await loadTracking(trackingOrderId, sessionToken);
+      Alert.alert("KhmerCart", "Refund request submitted for review.");
+    } catch (error) {
+      setTrackingError(
+        error instanceof Error ? error.message : "Unable to submit refund request."
+      );
+    } finally {
+      setIsSubmittingRefundRequest(false);
+    }
+  }
+
   async function handleRecordVideoMetric(
     eventType:
       | "IMPRESSION"
@@ -1866,6 +1907,9 @@ export default function App() {
             entry.id === notification.id ? { ...entry, isRead: true } : entry,
           ),
         );
+        setNotificationSummary((current) => ({
+          unreadCount: Math.max(0, current.unreadCount - 1),
+        }));
       } catch {
         // Ignore notification ack failures in the client.
       }
@@ -1877,7 +1921,7 @@ export default function App() {
       if (slug) {
         setSelectedPostId(null);
         setTrackingOrderId(null);
-        setSelectedProductSlug(decodeURIComponent(slug));
+        openProductDetail(decodeURIComponent(slug), "notification");
         setActiveTab("home");
         return;
       }
@@ -1901,7 +1945,7 @@ export default function App() {
       if (postId) {
         setTrackingOrderId(null);
         setSelectedProductSlug(null);
-        setSelectedPostId(decodeURIComponent(postId));
+        openPostViewer(decodeURIComponent(postId), "notification");
         setActiveTab("home");
         return;
       }
@@ -2158,7 +2202,51 @@ export default function App() {
     }
 
     setActiveTab("orders");
+    void recordDeepLink({
+      source: "orders_tab",
+      targetId: orderId,
+      targetType: "ORDER",
+    }).catch(() => undefined);
     await loadTracking(orderId);
+  }
+
+  async function handleSharePost(postId: string) {
+    const shareUrl = `${apiBaseUrl.replace(/\/api$/, "")}/posts/${encodeURIComponent(postId)}`;
+
+    try {
+      await Share.share({
+        message: `Watch this KhmerCart drop: ${shareUrl}`,
+        url: shareUrl,
+      });
+      await recordDeepLink({
+        metadata: {
+          action: "share",
+        },
+        source: "mobile_share",
+        targetId: postId,
+        targetType: "POST",
+      });
+    } catch {
+      // Ignore share cancellation or share transport failures.
+    }
+  }
+
+  function openProductDetail(slug: string, source = "mobile") {
+    void recordDeepLink({
+      source,
+      targetId: slug,
+      targetType: "PRODUCT",
+    }).catch(() => undefined);
+    setSelectedProductSlug(slug);
+  }
+
+  function openPostViewer(postId: string, source = "mobile") {
+    void recordDeepLink({
+      source,
+      targetId: postId,
+      targetType: "POST",
+    }).catch(() => undefined);
+    setSelectedPostId(postId);
   }
 
   async function handleRefreshTracking() {
@@ -2252,8 +2340,9 @@ export default function App() {
         items={feedState.items}
         locale={locale}
         onEndReached={handleLoadMore}
-        onOpenPost={setSelectedPostId}
-        onOpenProduct={setSelectedProductSlug}
+        onOpenPost={(postId) => openPostViewer(postId, "feed")}
+        onOpenProduct={(slug) => openProductDetail(slug, "feed")}
+        onSharePost={(postId) => void handleSharePost(postId)}
       />
     );
   }
@@ -2350,7 +2439,9 @@ export default function App() {
                 <>
                   <View style={styles.workspaceCard}>
                     <View style={styles.accountSectionHeader}>
-                      <Text style={styles.sectionEyebrow}>Notifications</Text>
+                      <Text style={styles.sectionEyebrow}>
+                        Notifications {notificationSummary.unreadCount > 0 ? `(${notificationSummary.unreadCount})` : ""}
+                      </Text>
                       {isAccountDataLoading ? (
                         <ActivityIndicator color={palette.accent} size="small" />
                       ) : null}
@@ -2393,7 +2484,7 @@ export default function App() {
                             key={entry.id}
                             onPress={() => {
                               setActiveTab("home");
-                              setSelectedProductSlug(entry.product.slug);
+                              openProductDetail(entry.product.slug, "saved_product");
                             }}
                             style={styles.accountListCard}
                           >
@@ -2661,7 +2752,9 @@ export default function App() {
           <OrderTrackingScreen
             errorMessage={trackingError}
             isLoading={isTrackingLoading}
+            isSubmittingRefundRequest={isSubmittingRefundRequest}
             locale={locale}
+            onCreateRefundRequest={(input) => void handleCreateRefundRequest(input)}
             tracking={trackingData}
             onBack={() => setTrackingOrderId(null)}
             onOpenTrackingLink={handleOpenTrackingLink}
@@ -2711,7 +2804,8 @@ export default function App() {
             onBack={() => setSelectedPostId(null)}
             onMetric={handleRecordVideoMetric}
             onOpenCart={handleOpenCart}
-            onOpenProduct={setSelectedProductSlug}
+            onOpenProduct={(slug) => openProductDetail(slug, "viewer")}
+            onSharePost={(postId) => handleSharePost(postId)}
           />
         ) : isSellerMode ? (
           <View style={styles.shell}>

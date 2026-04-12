@@ -6,6 +6,8 @@ import {
   type SessionUser,
 } from "@khmercart/core";
 import {
+  CampaignSlotType,
+  CampaignStatus,
   Currency,
   KycStatus,
   Prisma,
@@ -15,6 +17,7 @@ import {
   type User,
   UserRole,
 } from "./prisma-client";
+import { createUserNotification } from "./marketplace";
 import {
   createSignedDownloadUrl,
   createSignedUploadUrl,
@@ -68,6 +71,33 @@ export type SellerDashboardData = {
     viewerOpenRate: number;
     viewerOpens: number;
   };
+  bundles: Array<{
+    description: string;
+    id: string;
+    isActive: boolean;
+    itemCount: number;
+    items: Array<{
+      productId: string;
+      productName: string;
+      quantity: number;
+    }>;
+    name: string;
+    slug: string;
+  }>;
+  campaigns: Array<{
+    boostScore: number;
+    description: string;
+    endsAt: string | null;
+    id: string;
+    productId: string | null;
+    productName: string | null;
+    slotType: CampaignSlotType | null;
+    startsAt: string | null;
+    status: CampaignStatus;
+    title: string;
+    videoPostCaption: string | null;
+    videoPostId: string | null;
+  }>;
   canListProducts: boolean;
   documents: Array<{
     contentType: string;
@@ -194,6 +224,16 @@ function sanitizeSlug(input: string | undefined, fallback: string): string {
     .slice(0, 48);
 
   return normalized || "seller";
+}
+
+function sanitizeBundleSlug(input: string | undefined, fallback: string): string {
+  const source = (input?.trim() || fallback).toLowerCase();
+  const normalized = source
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+
+  return normalized || "bundle";
 }
 
 function parseCurrency(
@@ -521,6 +561,97 @@ async function readSellerAnalyticsSummary(sellerId: string | null) {
   };
 }
 
+async function readSellerBundles(sellerId: string | null) {
+  if (!sellerId) {
+    return [];
+  }
+
+  const bundles = await prisma.productBundle.findMany({
+    include: {
+      items: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }],
+    where: {
+      sellerId,
+    },
+  });
+
+  return bundles.map((bundle) => ({
+    description: bundle.description ?? "",
+    id: bundle.id,
+    isActive: bundle.isActive,
+    itemCount: bundle.items.reduce((sum, item) => sum + item.quantity, 0),
+    items: bundle.items.map((item) => ({
+      productId: item.product.id,
+      productName: item.product.name,
+      quantity: item.quantity,
+    })),
+    name: bundle.name,
+    slug: bundle.slug,
+  }));
+}
+
+async function readSellerCampaigns(sellerId: string | null) {
+  if (!sellerId) {
+    return [];
+  }
+
+  const campaigns = await prisma.campaign.findMany({
+    include: {
+      slots: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          videoPost: {
+            select: {
+              caption: true,
+              id: true,
+            },
+          },
+        },
+        orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }],
+    where: {
+      sellerId,
+    },
+  });
+
+  return campaigns.map((campaign) => {
+    const primarySlot = campaign.slots[0] ?? null;
+
+    return {
+      boostScore: primarySlot?.boostScore ?? 0,
+      description: campaign.description ?? "",
+      endsAt: serializeDate(campaign.endsAt),
+      id: campaign.id,
+      productId: primarySlot?.product?.id ?? null,
+      productName: primarySlot?.product?.name ?? null,
+      slotType: primarySlot?.slotType ?? null,
+      startsAt: serializeDate(campaign.startsAt),
+      status: campaign.status,
+      title: campaign.title,
+      videoPostCaption: primarySlot?.videoPost?.caption ?? null,
+      videoPostId: primarySlot?.videoPost?.id ?? null,
+    };
+  });
+}
+
 async function recordAuditLog(
   tx: Prisma.TransactionClient,
   input: {
@@ -753,10 +884,16 @@ export async function getSellerDashboardData(
     seller,
     uploadedDocumentCount,
   );
-  const analytics = await readSellerAnalyticsSummary(seller.id);
+  const [analytics, bundles, campaigns] = await Promise.all([
+    readSellerAnalyticsSummary(seller.id),
+    readSellerBundles(seller.id),
+    readSellerCampaigns(seller.id),
+  ]);
 
   return {
     analytics,
+    bundles,
+    campaigns,
     canListProducts: canSellerListProducts(user.sellerProfile?.kycStatus),
     documents: mapDocuments(user.sellerProfile?.documents ?? []),
     kycDocumentTypes: readKycDocumentTypes(process.env),
@@ -771,6 +908,327 @@ export async function getSellerDashboardData(
       id: user.id,
       phone: user.phone,
     },
+  };
+}
+
+export async function createSellerBundle(input: {
+  description?: string;
+  name?: string;
+  productIds?: string[];
+  userId: string;
+}) {
+  const user = await getUserWithSeller(prisma, input.userId);
+  const seller = user.sellerProfile;
+
+  if (!seller) {
+    throw new SellerServiceError("NOT_FOUND", "Seller profile not found.", 404);
+  }
+
+  const normalizedName = input.name?.trim() ?? "";
+
+  if (!normalizedName) {
+    throw new SellerServiceError("VALIDATION_ERROR", "Bundle name is required.", 400);
+  }
+
+  const productIds = [...new Set((input.productIds ?? []).map((value) => value.trim()).filter(Boolean))];
+
+  if (productIds.length < 2) {
+    throw new SellerServiceError(
+      "VALIDATION_ERROR",
+      "Select at least two seller products for a bundle.",
+      400,
+    );
+  }
+
+  const sellerProducts = await prisma.product.findMany({
+    select: {
+      id: true,
+    },
+    where: {
+      id: {
+        in: productIds,
+      },
+      sellerId: seller.id,
+      status: "ACTIVE",
+    },
+  });
+
+  if (sellerProducts.length !== productIds.length) {
+    throw new SellerServiceError(
+      "VALIDATION_ERROR",
+      "Bundles can only include active products from the current seller.",
+      400,
+    );
+  }
+
+  const slugBase = sanitizeBundleSlug(undefined, normalizedName);
+  let nextSlug = slugBase;
+  let suffix = 1;
+
+  for (;;) {
+    const existing = await prisma.productBundle.findUnique({
+      where: {
+        sellerId_slug: {
+          sellerId: seller.id,
+          slug: nextSlug,
+        },
+      },
+    });
+
+    if (!existing) {
+      break;
+    }
+
+    suffix += 1;
+    nextSlug = `${slugBase}-${suffix}`.slice(0, 48);
+  }
+
+  const bundle = await prisma.productBundle.create({
+    data: {
+      description: input.description?.trim() || null,
+      items: {
+        create: productIds.map((productId, index) => ({
+          position: index,
+          productId,
+          quantity: 1,
+        })),
+      },
+      name: normalizedName,
+      sellerId: seller.id,
+      slug: nextSlug,
+    },
+    include: {
+      items: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+      },
+    },
+  });
+
+  return {
+    description: bundle.description ?? "",
+    id: bundle.id,
+    isActive: bundle.isActive,
+    itemCount: bundle.items.reduce((sum, item) => sum + item.quantity, 0),
+    items: bundle.items.map((item) => ({
+      productId: item.product.id,
+      productName: item.product.name,
+      quantity: item.quantity,
+    })),
+    name: bundle.name,
+    slug: bundle.slug,
+  };
+}
+
+export async function createSellerCampaign(input: {
+  boostScore?: number | null;
+  description?: string;
+  endsAt?: string | null;
+  productId?: string | null;
+  slotType?: CampaignSlotType | null;
+  startsAt?: string | null;
+  title?: string;
+  userId: string;
+  videoPostId?: string | null;
+}) {
+  const user = await getUserWithSeller(prisma, input.userId);
+  const seller = user.sellerProfile;
+
+  if (!seller) {
+    throw new SellerServiceError("NOT_FOUND", "Seller profile not found.", 404);
+  }
+
+  const title = input.title?.trim() ?? "";
+
+  if (!title) {
+    throw new SellerServiceError("VALIDATION_ERROR", "Campaign title is required.", 400);
+  }
+
+  if (!input.videoPostId && !input.productId) {
+    throw new SellerServiceError(
+      "VALIDATION_ERROR",
+      "Campaigns need a video post or product target.",
+      400
+    );
+  }
+
+  const startsAt = input.startsAt ? new Date(input.startsAt) : null;
+  const endsAt = input.endsAt ? new Date(input.endsAt) : null;
+
+  if (startsAt && Number.isNaN(startsAt.getTime())) {
+    throw new SellerServiceError("VALIDATION_ERROR", "Campaign start date is invalid.", 400);
+  }
+
+  if (endsAt && Number.isNaN(endsAt.getTime())) {
+    throw new SellerServiceError("VALIDATION_ERROR", "Campaign end date is invalid.", 400);
+  }
+
+  if (startsAt && endsAt && endsAt < startsAt) {
+    throw new SellerServiceError(
+      "VALIDATION_ERROR",
+      "Campaign end date must be after the start date.",
+      400
+    );
+  }
+
+  const [product, videoPost] = await Promise.all([
+    input.productId
+      ? prisma.product.findFirst({
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+          where: {
+            id: input.productId,
+            sellerId: seller.id,
+          },
+        })
+      : Promise.resolve(null),
+    input.videoPostId
+      ? prisma.videoPost.findFirst({
+          select: {
+            caption: true,
+            id: true,
+          },
+          where: {
+            id: input.videoPostId,
+            sellerId: seller.id,
+          },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if (input.productId && !product) {
+    throw new SellerServiceError("VALIDATION_ERROR", "Campaign product is invalid.", 400);
+  }
+
+  if (input.videoPostId && !videoPost) {
+    throw new SellerServiceError("VALIDATION_ERROR", "Campaign video post is invalid.", 400);
+  }
+
+  const slugBase = sanitizeBundleSlug(undefined, title);
+  let nextSlug = slugBase;
+  let suffix = 1;
+
+  for (;;) {
+    const existing = await prisma.campaign.findUnique({
+      where: {
+        sellerId_slug: {
+          sellerId: seller.id,
+          slug: nextSlug,
+        },
+      },
+    });
+
+    if (!existing) {
+      break;
+    }
+
+    suffix += 1;
+    nextSlug = `${slugBase}-${suffix}`.slice(0, 48);
+  }
+
+  const now = new Date();
+  const status =
+    startsAt && startsAt > now ? CampaignStatus.SCHEDULED : CampaignStatus.LIVE;
+  const slotType = input.slotType ?? CampaignSlotType.FEATURED_DROP;
+  const boostScore = typeof input.boostScore === "number" ? Math.max(0, input.boostScore) : 0;
+
+  const campaign = await prisma.campaign.create({
+    data: {
+      description: input.description?.trim() || null,
+      endsAt,
+      sellerId: seller.id,
+      slug: nextSlug,
+      slots: {
+        create: {
+          boostScore,
+          position: 0,
+          productId: product?.id ?? null,
+          slotType,
+          startsAt,
+          endsAt,
+          videoPostId: videoPost?.id ?? null,
+        },
+      },
+      startsAt,
+      status,
+      title,
+    },
+    include: {
+      slots: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          videoPost: {
+            select: {
+              caption: true,
+              id: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (status === CampaignStatus.LIVE) {
+    const followers = await prisma.followedSeller.findMany({
+      select: {
+        buyerId: true,
+      },
+      where: {
+        sellerId: seller.id,
+      },
+    });
+
+    await Promise.all(
+      followers.map((follower) =>
+        createUserNotification({
+          actionUrl: videoPost
+            ? `/posts/${videoPost.id}`
+            : product
+              ? `/products/${product.slug}`
+              : null,
+          body: `${seller.displayName} launched ${title}.`,
+          kind: "CAMPAIGN_DROP",
+          metadata: {
+            campaignId: campaign.id,
+            productId: product?.id ?? null,
+            videoPostId: videoPost?.id ?? null,
+          },
+          sellerId: seller.id,
+          title: "New featured drop",
+          userId: follower.buyerId,
+        })
+      )
+    );
+  }
+
+  return {
+    boostScore,
+    description: campaign.description ?? "",
+    endsAt: serializeDate(campaign.endsAt),
+    id: campaign.id,
+    productId: product?.id ?? null,
+    productName: product?.name ?? null,
+    slotType,
+    startsAt: serializeDate(campaign.startsAt),
+    status: campaign.status,
+    title: campaign.title,
+    videoPostCaption: videoPost?.caption ?? null,
+    videoPostId: videoPost?.id ?? null,
   };
 }
 

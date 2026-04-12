@@ -139,6 +139,12 @@ export type BuyerFeedResult = {
 };
 
 export type BuyerProductDetail = BuyerFeedItem & {
+  bundles: Array<{
+    id: string;
+    itemCount: number;
+    name: string;
+    productIds: string[];
+  }>;
   disclosures: {
     returnPolicy: string;
     sellerAddress: string;
@@ -376,12 +382,14 @@ function mapBuyerFeedItem(product: BuyerProductRecord): BuyerFeedItem {
 
 function mapBuyerProductDetail(
   product: BuyerProductRecord,
-  reviewCount: number
+  reviewCount: number,
+  bundles: BuyerProductDetail["bundles"]
 ): BuyerProductDetail {
   const feedItem = mapBuyerFeedItem(product);
 
   return {
     ...feedItem,
+    bundles,
     disclosures: {
       returnPolicy: product.returnPolicy ?? "",
       sellerAddress: product.sellerAddress ?? "",
@@ -516,5 +524,32 @@ export async function getBuyerProductBySlug(slug: string): Promise<BuyerProductD
     throw new BuyerCatalogError("NOT_FOUND", "Product not found.", 404);
   }
 
-  return mapBuyerProductDetail(product, reviewCount);
+  const bundles = await prisma.productBundle.findMany({
+    include: {
+      items: {
+        orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }],
+    where: {
+      isActive: true,
+      items: {
+        some: {
+          productId: product.id,
+        },
+      },
+      sellerId: product.seller.id,
+    },
+  });
+
+  return mapBuyerProductDetail(
+    product,
+    reviewCount,
+    bundles.map((bundle) => ({
+      id: bundle.id,
+      itemCount: bundle.items.reduce((sum, item) => sum + item.quantity, 0),
+      name: bundle.name,
+      productIds: bundle.items.map((item) => item.productId),
+    }))
+  );
 }

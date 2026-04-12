@@ -1,4 +1,10 @@
-import { Currency, Prisma, ReviewStatus } from "./prisma-client";
+import {
+  Currency,
+  DisputeReason,
+  DisputeStatus,
+  Prisma,
+  ReviewStatus,
+} from "./prisma-client";
 import { prisma } from "./prisma";
 
 export class MarketplaceServiceError extends Error {
@@ -72,6 +78,19 @@ export type NotificationEntry = {
   isRead: boolean;
   kind: string;
   title: string;
+};
+
+export type BuyerOrderDisputeEntry = {
+  buyerMessage: string;
+  createdAt: string;
+  id: string;
+  reason: DisputeReason;
+  requestedRefundMinor: number | null;
+  resolutionNote: string | null;
+  resolvedAt: string | null;
+  resolvedRefundMinor: number | null;
+  status: DisputeStatus;
+  updatedAt: string;
 };
 
 export type BundlePreview = {
@@ -501,6 +520,19 @@ export async function listNotificationInbox(
   }));
 }
 
+export async function getNotificationSummary(userId: string) {
+  const unreadCount = await prisma.userNotification.count({
+    where: {
+      isRead: false,
+      userId,
+    },
+  });
+
+  return {
+    unreadCount,
+  };
+}
+
 export async function markNotificationRead(input: {
   notificationId: string;
   userId: string;
@@ -551,6 +583,138 @@ export async function createUserNotification(input: {
 
   return {
     id: notification.id,
+  };
+}
+
+export async function listBuyerOrderDisputes(input: {
+  orderId: string;
+  userId: string;
+}): Promise<BuyerOrderDisputeEntry[]> {
+  const disputes = await prisma.dispute.findMany({
+    orderBy: [{ createdAt: "desc" }],
+    where: {
+      orderId: input.orderId,
+      order: {
+        buyerId: input.userId,
+      },
+    },
+  });
+
+  return disputes.map((dispute) => ({
+    buyerMessage: dispute.buyerMessage,
+    createdAt: dispute.createdAt.toISOString(),
+    id: dispute.id,
+    reason: dispute.reason,
+    requestedRefundMinor: dispute.requestedRefundMinor ?? null,
+    resolutionNote: dispute.resolutionNote ?? null,
+    resolvedAt: serializeDate(dispute.resolvedAt),
+    resolvedRefundMinor: dispute.resolvedRefundMinor ?? null,
+    status: dispute.status,
+    updatedAt: dispute.updatedAt.toISOString(),
+  }));
+}
+
+export async function createBuyerOrderDispute(input: {
+  buyerMessage: string;
+  orderId: string;
+  reason: DisputeReason;
+  requestedRefundMinor?: number | null;
+  userId: string;
+}) {
+  const order = await prisma.order.findFirst({
+    select: {
+      buyerId: true,
+      currency: true,
+      id: true,
+      orderNumber: true,
+      sellerId: true,
+      seller: {
+        select: {
+          displayName: true,
+        },
+      },
+      state: true,
+      totalMinor: true,
+    },
+    where: {
+      buyerId: input.userId,
+      id: input.orderId,
+    },
+  });
+
+  if (!order) {
+    throw new MarketplaceServiceError("NOT_FOUND", "Order not found.", 404);
+  }
+
+  if (order.state !== "DELIVERED" && order.state !== "COMPLETED") {
+    throw new MarketplaceServiceError(
+      "FORBIDDEN",
+      "Refund requests are available after delivery is completed.",
+      403,
+    );
+  }
+
+  const activeDispute = await prisma.dispute.findFirst({
+    where: {
+      orderId: order.id,
+      status: {
+        in: [DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW],
+      },
+    },
+  });
+
+  if (activeDispute) {
+    throw new MarketplaceServiceError(
+      "CONFLICT",
+      "A refund request is already open for this order.",
+      409,
+    );
+  }
+
+  const trimmedMessage = input.buyerMessage.trim();
+
+  if (!trimmedMessage) {
+    throw new MarketplaceServiceError(
+      "BAD_REQUEST",
+      "Add a short explanation for the refund request.",
+      400,
+    );
+  }
+
+  const normalizedRequestedRefundMinor =
+    typeof input.requestedRefundMinor === "number"
+      ? Math.max(0, Math.min(order.totalMinor, Math.round(input.requestedRefundMinor)))
+      : null;
+
+  const dispute = await prisma.dispute.create({
+    data: {
+      buyerMessage: trimmedMessage,
+      orderId: order.id,
+      reason: input.reason,
+      requestedRefundMinor: normalizedRequestedRefundMinor,
+      status: DisputeStatus.OPEN,
+    },
+  });
+
+  await createUserNotification({
+    actionUrl: `/orders/${order.id}`,
+    body: `Your refund request for order ${order.orderNumber} has been submitted and is waiting for review.`,
+    kind: "ORDER_UPDATE",
+    metadata: {
+      disputeId: dispute.id,
+      orderId: order.id,
+      reason: input.reason,
+      sellerDisplayName: order.seller.displayName,
+    },
+    sellerId: order.sellerId,
+    title: "Refund request submitted",
+    userId: input.userId,
+  });
+
+  return {
+    createdAt: dispute.createdAt.toISOString(),
+    id: dispute.id,
+    status: dispute.status,
   };
 }
 

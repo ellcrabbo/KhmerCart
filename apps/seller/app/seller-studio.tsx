@@ -3,7 +3,8 @@
 import type {
   SellerCatalogData,
   SellerDashboardData,
-  SellerShippingQueueData
+  SellerShippingQueueData,
+  SellerVideoPostsData
 } from "@khmercart/db";
 import { formatKycStatus } from "@khmercart/core";
 import { useMemo, useState, useTransition } from "react";
@@ -15,6 +16,7 @@ type SellerStudioProps = {
   initialCatalog: SellerCatalogData;
   initialData: SellerDashboardData;
   initialShipping: SellerShippingQueueData;
+  initialVideoPosts: SellerVideoPostsData;
 };
 
 async function readErrorMessage(response: Response): Promise<string> {
@@ -30,13 +32,27 @@ async function readErrorMessage(response: Response): Promise<string> {
 export function SellerStudio({
   initialCatalog,
   initialData,
-  initialShipping
+  initialShipping,
+  initialVideoPosts
 }: SellerStudioProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [bundleMessage, setBundleMessage] = useState<string | null>(null);
+  const [campaignMessage, setCampaignMessage] = useState<string | null>(null);
   const [analyticsRange, setAnalyticsRange] = useState<7 | 30>(7);
+  const [bundleName, setBundleName] = useState("");
+  const [bundleDescription, setBundleDescription] = useState("");
+  const [selectedBundleProductIds, setSelectedBundleProductIds] = useState<string[]>([]);
+  const [campaignTitle, setCampaignTitle] = useState("");
+  const [campaignDescription, setCampaignDescription] = useState("");
+  const [campaignSlotType, setCampaignSlotType] = useState<"FEED_BOOST" | "PINNED_POST" | "FEATURED_DROP">("FEATURED_DROP");
+  const [campaignVideoPostId, setCampaignVideoPostId] = useState<string>("");
+  const [campaignProductId, setCampaignProductId] = useState<string>("");
+  const [campaignStartsAt, setCampaignStartsAt] = useState("");
+  const [campaignEndsAt, setCampaignEndsAt] = useState("");
+  const [campaignBoostScore, setCampaignBoostScore] = useState("25");
   const [selectedDocumentType, setSelectedDocumentType] = useState(
     initialData.kycDocumentTypes[0] ?? "GOVERNMENT_ID"
   );
@@ -146,6 +162,85 @@ export function SellerStudio({
     }
 
     setUploadMessage(`${file.name} uploaded and attached to the seller KYC profile.`);
+    router.refresh();
+  }
+
+  async function submitBundle() {
+    setBundleMessage(null);
+
+    const response = await fetch("/api/bundles", {
+      body: JSON.stringify({
+        description: bundleDescription,
+        name: bundleName,
+        productIds: selectedBundleProductIds
+      }),
+      headers: {
+        "content-type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+
+    setBundleName("");
+    setBundleDescription("");
+    setSelectedBundleProductIds([]);
+    setBundleMessage("Bundle created and ready for merchandising.");
+    router.refresh();
+  }
+
+  async function submitCampaign() {
+    setCampaignMessage(null);
+
+    const response = await fetch("/api/campaigns", {
+      body: JSON.stringify({
+        boostScore: Number(campaignBoostScore),
+        description: campaignDescription,
+        endsAt: campaignEndsAt || null,
+        productId: campaignProductId || null,
+        slotType: campaignSlotType,
+        startsAt: campaignStartsAt || null,
+        title: campaignTitle,
+        videoPostId: campaignVideoPostId || null
+      }),
+      headers: {
+        "content-type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+
+    setCampaignTitle("");
+    setCampaignDescription("");
+    setCampaignStartsAt("");
+    setCampaignEndsAt("");
+    setCampaignBoostScore("25");
+    setCampaignMessage("Campaign saved and ranking signals updated.");
+    router.refresh();
+  }
+
+  async function updateMerchandising(postId: string, input: {
+    featuredScore?: number | null;
+    isPinned?: boolean;
+    manualBoost?: number | null;
+  }) {
+    const response = await fetch(`/api/video-posts/${postId}/merchandising`, {
+      body: JSON.stringify(input),
+      headers: {
+        "content-type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+
     router.refresh();
   }
 
@@ -372,6 +467,368 @@ export function SellerStudio({
                 </div>
               ))
             )}
+          </div>
+        </article>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+        <article className="rounded-[1.75rem] border border-black/10 bg-white/85 p-6 shadow-[0_20px_50px_rgba(16,24,40,0.08)]">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
+                Merch bundles
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">
+                Group products into fixed offers
+              </h2>
+            </div>
+            {bundleMessage ? (
+              <p className="text-sm font-medium text-emerald-700">{bundleMessage}</p>
+            ) : null}
+          </div>
+
+          <div className="mt-6 grid gap-4">
+            <label className="grid gap-2 text-sm text-stone-700">
+              Bundle name
+              <input
+                className="rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                onChange={(event) => setBundleName(event.target.value)}
+                value={bundleName}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-stone-700">
+              Bundle description
+              <textarea
+                className="min-h-24 rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                onChange={(event) => setBundleDescription(event.target.value)}
+                value={bundleDescription}
+              />
+            </label>
+            <div className="rounded-3xl border border-black/10 bg-stone-50/85 p-4">
+              <p className="text-sm font-semibold text-stone-900">Select at least two products</p>
+              <div className="mt-4 grid gap-3">
+                {initialCatalog.products.map((product) => (
+                  <label
+                    key={product.id}
+                    className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm text-stone-800"
+                  >
+                    <input
+                      checked={selectedBundleProductIds.includes(product.id)}
+                      onChange={(event) =>
+                        setSelectedBundleProductIds((current) =>
+                          event.target.checked
+                            ? [...current, product.id]
+                            : current.filter((item) => item !== product.id)
+                        )
+                      }
+                      type="checkbox"
+                    />
+                    <span className="font-medium">{product.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <button
+              className="inline-flex items-center justify-center rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+              disabled={isPending || selectedBundleProductIds.length < 2 || bundleName.trim().length === 0}
+              onClick={() =>
+                startTransition(() => {
+                  void submitBundle().catch((error: unknown) => {
+                    setBundleMessage(
+                      error instanceof Error ? error.message : "Unable to create bundle."
+                    );
+                  });
+                })
+              }
+              type="button"
+            >
+              {isPending ? "Saving..." : "Create bundle"}
+            </button>
+          </div>
+        </article>
+
+        <article className="rounded-[1.75rem] border border-black/10 bg-white/85 p-6 shadow-[0_20px_50px_rgba(16,24,40,0.08)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
+            Active bundles
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">
+            Current seller offers
+          </h2>
+
+          <div className="mt-6 space-y-4">
+            {initialData.bundles.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-black/10 bg-stone-50/85 px-4 py-5 text-sm text-stone-600">
+                No bundles created yet.
+              </div>
+            ) : (
+              initialData.bundles.map((bundle) => (
+                <div
+                  key={bundle.id}
+                  className="rounded-3xl border border-black/10 bg-stone-50/85 px-4 py-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-stone-950">{bundle.name}</p>
+                      <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                        {bundle.slug} · {bundle.itemCount} units
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-800">
+                      {bundle.isActive ? "Active" : "Draft"}
+                    </span>
+                  </div>
+                  {bundle.description ? (
+                    <p className="mt-3 text-sm leading-6 text-stone-700">{bundle.description}</p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {bundle.items.map((item) => (
+                      <span
+                        key={`${bundle.id}-${item.productId}`}
+                        className="rounded-full bg-white px-3 py-2 text-xs font-medium text-stone-700"
+                      >
+                        {item.productName} × {item.quantity}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+        <article className="rounded-[1.75rem] border border-black/10 bg-white/85 p-6 shadow-[0_20px_50px_rgba(16,24,40,0.08)]">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
+                Campaigns
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">
+                Launch featured drops
+              </h2>
+            </div>
+            {campaignMessage ? (
+              <p className="text-sm font-medium text-emerald-700">{campaignMessage}</p>
+            ) : null}
+          </div>
+
+          <div className="mt-6 grid gap-4">
+            <label className="grid gap-2 text-sm text-stone-700">
+              Campaign title
+              <input
+                className="rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                onChange={(event) => setCampaignTitle(event.target.value)}
+                value={campaignTitle}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-stone-700">
+              Campaign description
+              <textarea
+                className="min-h-24 rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                onChange={(event) => setCampaignDescription(event.target.value)}
+                value={campaignDescription}
+              />
+            </label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="grid gap-2 text-sm text-stone-700">
+                Slot type
+                <select
+                  className="rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                  onChange={(event) =>
+                    setCampaignSlotType(
+                      event.target.value as "FEED_BOOST" | "PINNED_POST" | "FEATURED_DROP"
+                    )
+                  }
+                  value={campaignSlotType}
+                >
+                  <option value="FEATURED_DROP">Featured drop</option>
+                  <option value="FEED_BOOST">Feed boost</option>
+                  <option value="PINNED_POST">Pinned post</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm text-stone-700">
+                Boost score
+                <input
+                  className="rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                  onChange={(event) => setCampaignBoostScore(event.target.value)}
+                  value={campaignBoostScore}
+                />
+              </label>
+              <label className="grid gap-2 text-sm text-stone-700">
+                Starts at
+                <input
+                  className="rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                  onChange={(event) => setCampaignStartsAt(event.target.value)}
+                  type="datetime-local"
+                  value={campaignStartsAt}
+                />
+              </label>
+              <label className="grid gap-2 text-sm text-stone-700">
+                Ends at
+                <input
+                  className="rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                  onChange={(event) => setCampaignEndsAt(event.target.value)}
+                  type="datetime-local"
+                  value={campaignEndsAt}
+                />
+              </label>
+            </div>
+            <label className="grid gap-2 text-sm text-stone-700">
+              Video post
+              <select
+                className="rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                onChange={(event) => setCampaignVideoPostId(event.target.value)}
+                value={campaignVideoPostId}
+              >
+                <option value="">No linked post</option>
+                {initialVideoPosts.posts.map((post) => (
+                  <option key={post.id} value={post.id}>
+                    {post.caption}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm text-stone-700">
+              Product
+              <select
+                className="rounded-2xl border border-black/10 bg-stone-50 px-4 py-3 text-stone-950 outline-none transition focus:border-emerald-500/60"
+                onChange={(event) => setCampaignProductId(event.target.value)}
+                value={campaignProductId}
+              >
+                <option value="">No linked product</option>
+                {initialCatalog.products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="inline-flex items-center justify-center rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+              disabled={isPending || campaignTitle.trim().length === 0}
+              onClick={() =>
+                startTransition(() => {
+                  void submitCampaign().catch((error: unknown) => {
+                    setCampaignMessage(
+                      error instanceof Error ? error.message : "Unable to create campaign."
+                    );
+                  });
+                })
+              }
+              type="button"
+            >
+              {isPending ? "Saving..." : "Create campaign"}
+            </button>
+          </div>
+        </article>
+
+        <article className="rounded-[1.75rem] border border-black/10 bg-white/85 p-6 shadow-[0_20px_50px_rgba(16,24,40,0.08)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
+            Merchandising
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">
+            Pin and boost posts
+          </h2>
+
+          <div className="mt-6 space-y-4">
+            {initialVideoPosts.posts.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-black/10 bg-stone-50/85 px-4 py-5 text-sm text-stone-600">
+                No seller posts yet.
+              </div>
+            ) : (
+              initialVideoPosts.posts.slice(0, 6).map((post) => (
+                <div
+                  key={post.id}
+                  className="rounded-3xl border border-black/10 bg-stone-50/85 px-4 py-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-stone-950">{post.caption}</p>
+                      <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                        {post.product.name}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {post.isPinned ? (
+                        <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-amber-800">
+                          pinned
+                        </span>
+                      ) : null}
+                      {post.campaignBadges.slice(0, 2).map((badge) => (
+                        <span
+                          key={`${post.id}-${badge}`}
+                          className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-sky-800"
+                        >
+                          {badge.replaceAll("_", " ")}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-stone-900"
+                      onClick={() =>
+                        startTransition(() => {
+                          void updateMerchandising(post.id, { isPinned: !post.isPinned }).catch(
+                            (error: unknown) => {
+                              setCampaignMessage(
+                                error instanceof Error ? error.message : "Unable to update post."
+                              );
+                            }
+                          );
+                        })
+                      }
+                      type="button"
+                    >
+                      {post.isPinned ? "Unpin post" : "Pin post"}
+                    </button>
+                    <button
+                      className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-stone-900"
+                      onClick={() =>
+                        startTransition(() => {
+                          void updateMerchandising(post.id, {
+                            manualBoost: post.manualBoost + 10
+                          }).catch((error: unknown) => {
+                            setCampaignMessage(
+                              error instanceof Error ? error.message : "Unable to update post."
+                            );
+                          });
+                        })
+                      }
+                      type="button"
+                    >
+                      +10 manual boost
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="mt-6 rounded-3xl border border-black/10 bg-stone-50/85 p-5">
+            <p className="text-sm font-semibold text-stone-900">Campaign queue</p>
+            <div className="mt-4 space-y-3">
+              {initialData.campaigns.length === 0 ? (
+                <p className="text-sm text-stone-600">No active or scheduled campaigns yet.</p>
+              ) : (
+                initialData.campaigns.map((campaign) => (
+                  <div key={campaign.id} className="rounded-2xl border border-black/10 bg-white px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-stone-950">{campaign.title}</p>
+                        <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
+                          {campaign.status} · {campaign.slotType?.replaceAll("_", " ") ?? "No slot"}
+                        </p>
+                      </div>
+                      <span className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                        Boost {campaign.boostScore}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </article>
       </section>

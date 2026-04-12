@@ -28,6 +28,8 @@ export type ShipmentStatus =
   | "DELIVERED"
   | "RETURNED"
   | "FAILED"
+export type DisputeReason = "NOT_RECEIVED" | "DAMAGED" | "NOT_AS_DESCRIBED" | "OTHER"
+export type DisputeStatus = "OPEN" | "UNDER_REVIEW" | "REFUND_APPROVED" | "REJECTED" | "CLOSED"
 
 export type SessionUser = {
   email: string | null
@@ -181,6 +183,12 @@ export type BuyerVideoFeedResult = {
 }
 
 export type BuyerProductDetail = BuyerFeedItem & {
+  bundles: Array<{
+    id: string
+    itemCount: number
+    name: string
+    productIds: string[]
+  }>
   disclosures: {
     returnPolicy: string
     sellerAddress: string
@@ -250,6 +258,10 @@ export type NotificationEntry = {
   isRead: boolean
   kind: string
   title: string
+}
+
+export type NotificationSummary = {
+  unreadCount: number
 }
 
 export type BuyerCartItem = {
@@ -400,7 +412,20 @@ export type ShipmentSummary = {
 }
 
 export type BuyerOrderTrackingData = {
+  canRequestRefund: boolean
   currency: Currency
+  disputes: Array<{
+    buyerMessage: string
+    createdAt: string
+    id: string
+    reason: DisputeReason
+    requestedRefundMinor: number | null
+    resolutionNote: string | null
+    resolvedAt: string | null
+    resolvedRefundMinor: number | null
+    status: DisputeStatus
+    updatedAt: string
+  }>
   orderId: string
   orderNumber: string
   placedAt: string | null
@@ -943,6 +968,25 @@ export async function readOrderTracking(token: string, orderId: string) {
   )
 }
 
+export async function createBuyerOrderDispute(
+  token: string,
+  orderId: string,
+  input: {
+    buyerMessage: string
+    reason: DisputeReason
+    requestedRefundMinor?: number | null
+  }
+) {
+  return requestJson<{ createdAt: string; id: string; status: DisputeStatus }>(
+    `/api/buyer/orders/${encodeURIComponent(orderId)}`,
+    {
+      body: input,
+      method: "POST",
+      token
+    }
+  )
+}
+
 export async function readSellerDashboard(token: string) {
   return requestSellerJson<SellerDashboardData>("/api/onboarding", {
     token
@@ -1117,6 +1161,12 @@ export async function readNotifications(token: string) {
   })
 }
 
+export async function readNotificationSummary(token: string) {
+  return requestJson<NotificationSummary>("/api/notifications/summary", {
+    token
+  })
+}
+
 export async function markNotificationAsRead(token: string, notificationId: string) {
   return requestJson<{ success: boolean }>("/api/notifications", {
     body: {
@@ -1124,6 +1174,19 @@ export async function markNotificationAsRead(token: string, notificationId: stri
     },
     method: "PATCH",
     token
+  })
+}
+
+export async function recordDeepLink(input: {
+  metadata?: Record<string, unknown> | null
+  orderId?: string | null
+  source?: string | null
+  targetId: string
+  targetType: "POST" | "PRODUCT" | "ORDER" | "SELLER"
+}) {
+  return requestJson<{ success: boolean }>("/api/deep-links", {
+    body: input,
+    method: "POST"
   })
 }
 

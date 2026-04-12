@@ -6,6 +6,7 @@ import {
   type ShipmentLifecycleStatus,
   type ShippingCarrier
 } from "@khmercart/core";
+import { listBuyerOrderDisputes, type BuyerOrderDisputeEntry } from "./marketplace";
 import {
   OrderState,
   Prisma,
@@ -135,7 +136,9 @@ export type SellerShippingQueueData = {
 };
 
 export type BuyerOrderTrackingData = {
+  canRequestRefund: boolean;
   currency: Currency;
+  disputes: BuyerOrderDisputeEntry[];
   orderId: string;
   orderNumber: string;
   placedAt: string | null;
@@ -224,9 +227,22 @@ function resolveSellerContact(order: BuyerShipmentOrderRecord): string {
   );
 }
 
-function mapBuyerOrderTracking(order: BuyerShipmentOrderRecord): BuyerOrderTrackingData {
+async function mapBuyerOrderTracking(
+  order: BuyerShipmentOrderRecord
+): Promise<BuyerOrderTrackingData> {
+  const disputes = await listBuyerOrderDisputes({
+    orderId: order.id,
+    userId: order.buyerId,
+  });
+
   return {
+    canRequestRefund:
+      (order.state === "DELIVERED" || order.state === "COMPLETED") &&
+      !disputes.some(
+        (dispute) => dispute.status === "OPEN" || dispute.status === "UNDER_REVIEW"
+      ),
     currency: order.currency,
+    disputes,
     orderId: order.id,
     orderNumber: order.orderNumber,
     placedAt: serializeDate(order.placedAt),

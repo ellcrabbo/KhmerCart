@@ -1,5 +1,6 @@
 import { canSellerListProducts } from "@khmercart/core";
 import {
+  CampaignStatus,
   Currency,
   KycStatus,
   Prisma,
@@ -22,7 +23,8 @@ type BuyerVideoCursor = {
   publishedAt: string;
 };
 
-const publicVideoPostInclude = {
+function createPublicVideoPostInclude(now: Date) {
+  return {
   attachments: {
     include: {
       product: {
@@ -36,6 +38,45 @@ const publicVideoPostInclude = {
     orderBy: [{ isPrimary: "desc" }, { position: "asc" }]
   },
   campaignSlots: {
+    where: {
+      campaign: {
+        OR: [
+          {
+            status: CampaignStatus.LIVE
+          },
+          {
+            startsAt: {
+              lte: now
+            },
+            status: CampaignStatus.SCHEDULED
+          }
+        ]
+      },
+      OR: [
+        {
+          startsAt: null
+        },
+        {
+          startsAt: {
+            lte: now
+          }
+        }
+      ],
+      AND: [
+        {
+          OR: [
+            {
+              endsAt: null
+            },
+            {
+              endsAt: {
+                gte: now
+              }
+            }
+          ]
+        }
+      ]
+    },
     select: {
       boostScore: true,
       slotType: true
@@ -83,6 +124,7 @@ const publicVideoPostInclude = {
     }
   }
 } satisfies Prisma.VideoPostInclude;
+}
 
 const sellerVideoPostInclude = {
   attachments: {
@@ -96,6 +138,12 @@ const sellerVideoPostInclude = {
       }
     },
     orderBy: [{ isPrimary: "desc" }, { position: "asc" }]
+  },
+  campaignSlots: {
+    select: {
+      boostScore: true,
+      slotType: true
+    }
   },
   metrics: true,
   product: {
@@ -127,7 +175,7 @@ const sellerVideoPostInclude = {
 } satisfies Prisma.VideoPostInclude;
 
 type PublicVideoPostRecord = Prisma.VideoPostGetPayload<{
-  include: typeof publicVideoPostInclude;
+  include: ReturnType<typeof createPublicVideoPostInclude>;
 }>;
 
 type SellerVideoPostRecord = Prisma.VideoPostGetPayload<{
@@ -232,6 +280,7 @@ export type SellerVideoPost = {
     opens: number;
     productOpens: number;
   };
+  campaignBadges: string[];
   attachments: Array<{
     id: string;
     isPrimary: boolean;
@@ -242,6 +291,8 @@ export type SellerVideoPost = {
   caption: string;
   createdAt: string;
   id: string;
+  isPinned: boolean;
+  manualBoost: number;
   moderationNotes: string | null;
   moderationStatus: VideoPostModerationStatus;
   posterUrl: string | null;
@@ -300,6 +351,15 @@ type ProcessSellerVideoPostInput = {
   postId: string;
   targetStatus?: string;
   userAgent?: string | null;
+  userId: string;
+};
+
+type UpdateSellerVideoPostMerchandisingInput = {
+  featuredScore?: number | null;
+  ipAddress?: string | null;
+  isPinned?: boolean;
+  manualBoost?: number | null;
+  postId: string;
   userId: string;
 };
 
@@ -811,6 +871,7 @@ async function mapSellerVideoPost(record: SellerVideoPostRecord): Promise<Seller
 
   return {
     analytics: aggregateMetrics(record.metrics),
+    campaignBadges: record.campaignSlots.map((slot) => slot.slotType),
     attachments: record.attachments.map((attachment) => ({
       id: attachment.id,
       isPrimary: attachment.isPrimary,
@@ -821,6 +882,8 @@ async function mapSellerVideoPost(record: SellerVideoPostRecord): Promise<Seller
     caption: record.caption,
     createdAt: record.createdAt.toISOString(),
     id: record.id,
+    isPinned: record.isPinned,
+    manualBoost: record.manualBoost,
     moderationNotes: record.moderationNotes ?? null,
     moderationStatus: record.moderationStatus,
     posterUrl,
@@ -1224,6 +1287,53 @@ export async function getSellerVideoPostsData(userId: string): Promise<SellerVid
   };
 }
 
+export async function updateSellerVideoPostMerchandising(
+  input: UpdateSellerVideoPostMerchandisingInput
+) {
+  const seller = await prisma.seller.findFirst({
+    where: {
+      userId: input.userId
+    }
+  });
+
+  if (!seller) {
+    throw new SellerServiceError("NOT_FOUND", "Seller profile not found.", 404);
+  }
+
+  const post = await prisma.videoPost.findFirst({
+    where: {
+      id: input.postId,
+      sellerId: seller.id
+    }
+  });
+
+  if (!post) {
+    throw new SellerServiceError("NOT_FOUND", "Video post not found.", 404);
+  }
+
+  const updated = await prisma.videoPost.update({
+    data: {
+      featuredScore:
+        typeof input.featuredScore === "number"
+          ? Math.max(0, input.featuredScore)
+          : post.featuredScore,
+      isPinned: typeof input.isPinned === "boolean" ? input.isPinned : post.isPinned,
+      manualBoost:
+        typeof input.manualBoost === "number" ? Math.max(0, input.manualBoost) : post.manualBoost
+    },
+    where: {
+      id: post.id
+    }
+  });
+
+  return {
+    featuredScore: updated.featuredScore,
+    id: updated.id,
+    isPinned: updated.isPinned,
+    manualBoost: updated.manualBoost
+  };
+}
+
 export async function recordVideoPostMetric(
   input: RecordVideoPostMetricInput
 ) {
@@ -1279,10 +1389,11 @@ export async function getBuyerVideoFeed(input?: {
   limit?: number;
 }): Promise<BuyerVideoFeedResult> {
   const limit = clampLimit(input?.limit);
+  const now = new Date();
   const decodedCursor = decodeCursor(input?.cursor);
   const cursorPublishedAt = decodedCursor ? new Date(decodedCursor.publishedAt) : null;
   const posts = await prisma.videoPost.findMany({
-    include: publicVideoPostInclude,
+    include: createPublicVideoPostInclude(now),
     orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
     take: limit + 1,
     where: {
