@@ -33,6 +33,41 @@ type UserWithSeller = User & {
 };
 
 export type SellerDashboardData = {
+  analytics: {
+    addToCarts: number;
+    conversionRate: number;
+    conversions: number;
+    daily: Array<{
+      addToCarts: number;
+      conversions: number;
+      date: string;
+      impressions: number;
+      productOpens: number;
+      viewerOpens: number;
+    }>;
+    impressions: number;
+    livePosts: number;
+    productOpens: number;
+    publishedProducts: number;
+    topProducts: Array<{
+      addToCarts: number;
+      conversions: number;
+      conversionRate: number;
+      impressions: number;
+      productId: string;
+      productName: string;
+      viewerOpens: number;
+    }>;
+    topPost: {
+      caption: string;
+      conversionRate: number;
+      id: string;
+      impressions: number;
+      productName: string;
+    } | null;
+    viewerOpenRate: number;
+    viewerOpens: number;
+  };
   canListProducts: boolean;
   documents: Array<{
     contentType: string;
@@ -260,6 +295,230 @@ function mapDocuments(documents: SellerDocument[]) {
     type: document.type,
     uploadedAt: serializeDate(document.uploadedAt),
   }));
+}
+
+async function readSellerAnalyticsSummary(sellerId: string | null) {
+  if (!sellerId) {
+    return {
+      addToCarts: 0,
+      conversionRate: 0,
+      conversions: 0,
+      daily: [],
+      impressions: 0,
+      livePosts: 0,
+      productOpens: 0,
+      publishedProducts: 0,
+      topProducts: [],
+      topPost: null,
+      viewerOpenRate: 0,
+      viewerOpens: 0,
+    };
+  }
+
+  const metricStartDate = new Date();
+  metricStartDate.setHours(0, 0, 0, 0);
+  metricStartDate.setDate(metricStartDate.getDate() - 29);
+
+  const [posts, publishedProducts, recentMetrics] = await Promise.all([
+    prisma.videoPost.findMany({
+      include: {
+        metrics: true,
+        product: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      where: {
+        sellerId,
+      },
+    }),
+    prisma.product.count({
+      where: {
+        publishedAt: {
+          not: null,
+        },
+        sellerId,
+        status: "ACTIVE",
+      },
+    }),
+    prisma.videoPostMetricDaily.findMany({
+      include: {
+        videoPost: {
+          select: {
+            productId: true,
+            sellerId: true,
+          },
+        },
+      },
+      orderBy: [{ metricDate: "asc" }],
+      where: {
+        metricDate: {
+          gte: metricStartDate,
+        },
+        videoPost: {
+          sellerId,
+        },
+      },
+    }),
+  ]);
+
+  const totals = posts.reduce(
+    (summary, post) => {
+      const metrics = post.metrics.reduce(
+        (metricSummary, metric) => ({
+          addToCarts: metricSummary.addToCarts + metric.addToCarts,
+          conversions: metricSummary.conversions + metric.conversions,
+          impressions: metricSummary.impressions + metric.impressions,
+          productOpens: metricSummary.productOpens + metric.productOpens,
+          viewerOpens: metricSummary.viewerOpens + metric.opens,
+        }),
+        {
+          addToCarts: 0,
+          conversions: 0,
+          impressions: 0,
+          productOpens: 0,
+          viewerOpens: 0,
+        },
+      );
+
+      const postConversionRate =
+        metrics.impressions > 0 ? (metrics.conversions / metrics.impressions) * 100 : 0;
+      const nextTopPost =
+        !summary.topPost || postConversionRate > summary.topPost.conversionRate
+          ? {
+              caption: post.caption,
+              conversionRate: postConversionRate,
+              id: post.id,
+              impressions: metrics.impressions,
+              productName: post.product.name,
+            }
+          : summary.topPost;
+
+      return {
+        addToCarts: summary.addToCarts + metrics.addToCarts,
+        conversions: summary.conversions + metrics.conversions,
+        impressions: summary.impressions + metrics.impressions,
+        livePosts:
+          summary.livePosts + (post.status === "PUBLISHED" ? 1 : 0),
+        productOpens: summary.productOpens + metrics.productOpens,
+        topPost: nextTopPost,
+        viewerOpens: summary.viewerOpens + metrics.viewerOpens,
+      };
+    },
+    {
+      addToCarts: 0,
+      conversions: 0,
+      impressions: 0,
+      livePosts: 0,
+      productOpens: 0,
+      topPost: null as SellerDashboardData["analytics"]["topPost"],
+      viewerOpens: 0,
+    },
+  );
+
+  const dailyMetrics = new Map<
+    string,
+    {
+      addToCarts: number;
+      conversions: number;
+      date: string;
+      impressions: number;
+      productOpens: number;
+      viewerOpens: number;
+    }
+  >();
+  const topProducts = new Map<
+    string,
+    {
+      addToCarts: number;
+      conversions: number;
+      impressions: number;
+      productId: string;
+      productName: string;
+      viewerOpens: number;
+    }
+  >();
+
+  for (let index = 29; index >= 0; index -= 1) {
+    const date = new Date(metricStartDate);
+    date.setDate(metricStartDate.getDate() + index);
+    const key = date.toISOString().slice(0, 10);
+
+    dailyMetrics.set(key, {
+      addToCarts: 0,
+      conversions: 0,
+      date: key,
+      impressions: 0,
+      productOpens: 0,
+      viewerOpens: 0,
+    });
+  }
+
+  for (const metric of recentMetrics) {
+    const key = metric.metricDate.toISOString().slice(0, 10);
+    const currentDay = dailyMetrics.get(key);
+
+    if (currentDay) {
+      currentDay.addToCarts += metric.addToCarts;
+      currentDay.conversions += metric.conversions;
+      currentDay.impressions += metric.impressions;
+      currentDay.productOpens += metric.productOpens;
+      currentDay.viewerOpens += metric.opens;
+    }
+  }
+
+  for (const post of posts) {
+    const currentProduct = topProducts.get(post.productId) ?? {
+      addToCarts: 0,
+      conversions: 0,
+      impressions: 0,
+      productId: post.productId,
+      productName: post.product.name,
+      viewerOpens: 0,
+    };
+
+    for (const metric of post.metrics) {
+      currentProduct.addToCarts += metric.addToCarts;
+      currentProduct.conversions += metric.conversions;
+      currentProduct.impressions += metric.impressions;
+      currentProduct.viewerOpens += metric.opens;
+    }
+
+    topProducts.set(post.productId, currentProduct);
+  }
+
+  return {
+    addToCarts: totals.addToCarts,
+    conversionRate:
+      totals.impressions > 0 ? (totals.conversions / totals.impressions) * 100 : 0,
+    conversions: totals.conversions,
+    daily: Array.from(dailyMetrics.values()).sort((left, right) =>
+      left.date.localeCompare(right.date),
+    ),
+    impressions: totals.impressions,
+    livePosts: totals.livePosts,
+    productOpens: totals.productOpens,
+    publishedProducts,
+    topProducts: Array.from(topProducts.values())
+      .map((product) => ({
+        ...product,
+        conversionRate:
+          product.impressions > 0 ? (product.conversions / product.impressions) * 100 : 0,
+      }))
+      .sort((left, right) => {
+        if (right.conversions !== left.conversions) {
+          return right.conversions - left.conversions;
+        }
+
+        return right.impressions - left.impressions;
+      })
+      .slice(0, 5),
+    topPost: totals.topPost,
+    viewerOpenRate:
+      totals.impressions > 0 ? (totals.viewerOpens / totals.impressions) * 100 : 0,
+    viewerOpens: totals.viewerOpens,
+  };
 }
 
 async function recordAuditLog(
@@ -494,8 +753,10 @@ export async function getSellerDashboardData(
     seller,
     uploadedDocumentCount,
   );
+  const analytics = await readSellerAnalyticsSummary(seller.id);
 
   return {
+    analytics,
     canListProducts: canSellerListProducts(user.sellerProfile?.kycStatus),
     documents: mapDocuments(user.sellerProfile?.documents ?? []),
     kycDocumentTypes: readKycDocumentTypes(process.env),

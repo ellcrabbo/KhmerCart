@@ -23,7 +23,8 @@ import {
 type SellerProductDraftField =
   | keyof CreateSellerProductInput
   | "inventoryQuantity"
-  | "priceMinor";
+  | "priceMinor"
+  | "reorderPoint";
 
 type SellerCreatorScreenProps = {
   catalog: SellerCatalogData | null;
@@ -155,6 +156,17 @@ export function SellerCreatorScreen({
             Build one product, attach one shoppable clip, then jump back to the
             buyer feed to verify the storefront loop.
           </Text>
+          {videoDraft.statusDetail ? (
+            <Text style={styles.helperText}>{videoDraft.statusDetail}</Text>
+          ) : null}
+          {videoDraft.status !== "DRAFT" ? (
+            <Text style={styles.helperText}>
+              Upload progress: {videoDraft.uploadProgress}%
+            </Text>
+          ) : null}
+          {videoDraft.processingPostId ? (
+            <Text style={styles.helperText}>In-flight publish saved on this device.</Text>
+          ) : null}
         </View>
       </View>
 
@@ -221,6 +233,16 @@ export function SellerCreatorScreen({
               value={`${productDraft.variants?.[0]?.inventoryQuantity ?? ""}`}
             />
           </View>
+          <TextInput
+            keyboardType="number-pad"
+            onChangeText={(value) =>
+              onChangeProductDraft("reorderPoint", value)
+            }
+            placeholder="Low-stock threshold"
+            placeholderTextColor={palette.muted}
+            style={styles.input}
+            value={`${productDraft.variants?.[0]?.reorderPoint ?? ""}`}
+          />
           <TextInput
             onChangeText={(value) =>
               onChangeProductDraft("sellerContact", value)
@@ -326,6 +348,12 @@ export function SellerCreatorScreen({
                 {selectedProduct?.name ?? "Attach a product"}{" "}
                 {videoDraft.durationSec ? `· ${videoDraft.durationSec}s` : ""}
               </Text>
+              {videoDraft.attachmentProductIds.length > 1 ? (
+                <Text style={styles.previewMeta}>
+                  +{videoDraft.attachmentProductIds.length - 1} more product
+                  {videoDraft.attachmentProductIds.length > 2 ? "s" : ""}
+                </Text>
+              ) : null}
             </View>
           </View>
         ) : null}

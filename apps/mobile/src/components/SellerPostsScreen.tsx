@@ -17,14 +17,28 @@ import {
   View
 } from "react-native";
 
+function formatRate(numerator: number, denominator: number) {
+  if (denominator <= 0) {
+    return "0.0%";
+  }
+
+  return `${((numerator / denominator) * 100).toFixed(1)}%`;
+}
+
 export type SellerVideoDraftState = {
+  attachmentProductIds: string[];
   durationSec: number | null;
   caption: string;
+  processingPostId: string | null;
   posterLabel: string | null;
+  posterObjectKey: string | null;
   posterPreviewUrl: string | null;
   productId: string | null;
+  statusDetail: string | null;
   status: "DRAFT" | "UPLOADING" | "PROCESSING" | "READY" | "FAILED" | "PUBLISHED";
+  uploadProgress: number;
   videoLabel: string | null;
+  videoObjectKey: string | null;
 };
 
 type SellerPostsScreenProps = {
@@ -40,6 +54,8 @@ type SellerPostsScreenProps = {
   onPickPoster: () => void;
   onPickVideo: () => void;
   onPublish: () => void;
+  onRepublishPost: (postId: string) => void;
+  onResumeDraft: () => void;
   onSaveDraft: () => void;
   onSelectProduct: (productId: string) => void;
 };
@@ -57,6 +73,8 @@ export function SellerPostsScreen({
   onPickPoster,
   onPickVideo,
   onPublish,
+  onRepublishPost,
+  onResumeDraft,
   onSaveDraft,
   onSelectProduct
 }: SellerPostsScreenProps) {
@@ -98,6 +116,14 @@ export function SellerPostsScreen({
             <Text style={styles.readinessPill}>{draftReadyCount}/3</Text>
           </View>
           <Text style={styles.readinessStatus}>Current state: {draft.status}</Text>
+          {draft.statusDetail ? (
+            <Text style={styles.readinessBody}>{draft.statusDetail}</Text>
+          ) : null}
+          {draft.status !== "DRAFT" ? (
+            <Text style={styles.readinessBody}>
+              Upload progress: {draft.uploadProgress}%
+            </Text>
+          ) : null}
           <Text style={styles.readinessBody}>
             Add a caption, select a vertical clip, and attach one product before
             publishing to the buyer feed.
@@ -225,6 +251,21 @@ export function SellerPostsScreen({
         </View>
 
         <View style={styles.actionRow}>
+          {(draft.status === "UPLOADING" || draft.status === "PROCESSING") &&
+          (draft.videoObjectKey || draft.processingPostId) ? (
+            <Pressable
+              disabled={isCreating}
+              onPress={onResumeDraft}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                styles.actionButton,
+                pressed ? styles.buttonPressed : null,
+                isCreating ? styles.buttonDisabled : null
+              ]}
+            >
+              <Text style={styles.secondaryButtonText}>Resume publish</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             disabled={isCreating}
             onPress={onSaveDraft}
@@ -283,9 +324,42 @@ export function SellerPostsScreen({
                     {post.analytics.conversions} orders
                   </Text>
                   <Text style={styles.productChipMeta}>
+                    Open rate {formatRate(post.analytics.opens, post.analytics.impressions)} ·
+                    PDP rate {formatRate(post.analytics.productOpens, post.analytics.impressions)} ·
+                    Cart rate {formatRate(post.analytics.addToCarts, post.analytics.impressions)}
+                  </Text>
+                  <Text style={styles.productChipMeta}>
+                    Conversion {formatRate(post.analytics.conversions, post.analytics.impressions)}
+                  </Text>
+                  <Text style={styles.productChipMeta}>
                     Moderation: {post.moderationStatus}
                     {post.processingError ? ` · ${post.processingError}` : ""}
                   </Text>
+                  {post.attachments.length > 1 ? (
+                    <Text style={styles.productChipMeta}>
+                      Also attached:{" "}
+                      {post.attachments
+                        .filter((attachment) => !attachment.isPrimary)
+                        .map((attachment) => attachment.name)
+                        .join(", ")}
+                    </Text>
+                  ) : null}
+                  {post.status === "FAILED" ||
+                  post.status === "DRAFT" ||
+                  post.status === "READY" ? (
+                    <Pressable
+                      onPress={() => onRepublishPost(post.id)}
+                      style={({ pressed }) => [
+                        styles.secondaryButton,
+                        styles.retryButton,
+                        pressed ? styles.buttonPressed : null
+                      ]}
+                    >
+                      <Text style={styles.secondaryButtonText}>
+                        {post.status === "FAILED" ? "Retry publish" : "Publish now"}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               </View>
             </View>
@@ -541,6 +615,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     justifyContent: "space-between"
+  },
+  retryButton: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    minHeight: 40
   },
   sectionLabel: {
     color: palette.sun,

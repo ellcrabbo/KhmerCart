@@ -415,6 +415,41 @@ export type BuyerOrderTrackingData = {
 }
 
 export type SellerDashboardData = {
+  analytics: {
+    addToCarts: number
+    conversionRate: number
+    conversions: number
+    daily: Array<{
+      addToCarts: number
+      conversions: number
+      date: string
+      impressions: number
+      productOpens: number
+      viewerOpens: number
+    }>
+    impressions: number
+    livePosts: number
+    productOpens: number
+    publishedProducts: number
+    topProducts: Array<{
+      addToCarts: number
+      conversions: number
+      conversionRate: number
+      impressions: number
+      productId: string
+      productName: string
+      viewerOpens: number
+    }>
+    topPost: {
+      caption: string
+      conversionRate: number
+      id: string
+      impressions: number
+      productName: string
+    } | null
+    viewerOpenRate: number
+    viewerOpens: number
+  }
   canListProducts: boolean
   documents: Array<{
     contentType: string
@@ -576,6 +611,10 @@ export type SellerVideoPost = {
     durationSec: number | null
     url: string | null
   }
+}
+
+export type UpdateSellerVideoPostInput = {
+  status?: "READY" | "PUBLISHED" | null
 }
 
 export type SellerVideoPostsData = {
@@ -932,6 +971,23 @@ export async function createSellerProduct(token: string, input: CreateSellerProd
   })
 }
 
+export async function updateSellerVariantInventory(
+  token: string,
+  variantId: string,
+  onHandQuantity: number
+) {
+  return requestSellerJson<SellerCatalogProduct>(
+    `/api/variants/${encodeURIComponent(variantId)}/inventory`,
+    {
+      body: {
+        onHandQuantity
+      },
+      method: "PATCH",
+      token
+    }
+  )
+}
+
 export async function readSellerShippingQueue(token: string) {
   return requestSellerJson<SellerShippingQueueData>("/api/shipping", {
     token
@@ -961,6 +1017,21 @@ export async function createSellerVideoPost(token: string, input: CreateSellerVi
     method: "POST",
     token
   })
+}
+
+export async function updateSellerVideoPost(
+  token: string,
+  videoPostId: string,
+  input: UpdateSellerVideoPostInput
+) {
+  return requestSellerJson<SellerVideoPost>(
+    `/api/video-posts/${encodeURIComponent(videoPostId)}`,
+    {
+      body: input,
+      method: "PATCH",
+      token
+    }
+  )
 }
 
 export async function recordVideoFeedMetric(

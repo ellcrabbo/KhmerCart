@@ -16,10 +16,12 @@ type SellerCatalogScreenProps = {
     field:
       | keyof CreateSellerProductInput
       | "inventoryQuantity"
-      | "priceMinor",
+      | "priceMinor"
+      | "reorderPoint",
     value: string
   ) => void;
   onCreate: () => void;
+  onUpdateInventory: (variantId: string, nextQuantity: number) => void;
 };
 
 export function SellerCatalogScreen({
@@ -31,7 +33,8 @@ export function SellerCatalogScreen({
   locale,
   message,
   onChangeDraft,
-  onCreate
+  onCreate,
+  onUpdateInventory
 }: SellerCatalogScreenProps) {
   const dictionary = getBuyerDictionary(locale);
 
@@ -110,6 +113,14 @@ export function SellerCatalogScreen({
             style={styles.input}
             value={`${draft.variants?.[0]?.inventoryQuantity ?? ""}`}
           />
+          <TextInput
+            keyboardType="number-pad"
+            onChangeText={(value) => onChangeDraft("reorderPoint", value)}
+            placeholder="Low-stock threshold"
+            placeholderTextColor={palette.muted}
+            style={styles.input}
+            value={`${draft.variants?.[0]?.reorderPoint ?? ""}`}
+          />
         </View>
 
         <Pressable
@@ -128,6 +139,19 @@ export function SellerCatalogScreen({
       <View style={styles.list}>
         {catalog?.products.map((product) => (
           <View key={product.id} style={styles.card}>
+            {(() => {
+              const variant = product.variants[0];
+              const availableQuantity = variant?.inventory?.availableQuantity ?? 0;
+              const reorderPoint = variant?.inventory?.reorderPoint ?? null;
+              const inventoryState =
+                availableQuantity <= 0
+                  ? "Out of stock"
+                  : reorderPoint !== null && availableQuantity <= reorderPoint
+                    ? "Low stock"
+                    : "Healthy stock";
+
+              return (
+                <>
             <View style={styles.row}>
               <Text style={styles.productName}>{product.name}</Text>
               <Text style={styles.statusPill}>
@@ -136,11 +160,51 @@ export function SellerCatalogScreen({
             </View>
             <Text style={styles.productMeta}>{product.category}</Text>
             <Text style={styles.productMeta}>
-              {product.variants[0]?.priceMinor ?? "--"} · {product.variants[0]?.inventory?.availableQuantity ?? 0} {dictionary.stockUnits}
+              {variant?.priceMinor ?? "--"} · {availableQuantity} {dictionary.stockUnits}
             </Text>
+            <Text
+              style={[
+                styles.productMeta,
+                inventoryState === "Low stock" || inventoryState === "Out of stock"
+                  ? styles.warningText
+                  : styles.healthyText
+              ]}
+            >
+              {inventoryState}
+              {reorderPoint !== null ? ` · Reorder at ${reorderPoint}` : ""}
+            </Text>
+            {variant ? (
+              <View style={styles.inventoryRow}>
+                <Pressable
+                  onPress={() =>
+                    onUpdateInventory(
+                      variant.id,
+                      Math.max(0, (variant.inventory?.onHandQuantity ?? 0) - 1)
+                    )
+                  }
+                  style={styles.inventoryButton}
+                >
+                  <Text style={styles.inventoryButtonText}>-1</Text>
+                </Pressable>
+                <Text style={styles.inventoryValue}>
+                  On hand {variant.inventory?.onHandQuantity ?? 0}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    onUpdateInventory(variant.id, (variant.inventory?.onHandQuantity ?? 0) + 1)
+                  }
+                  style={styles.inventoryButton}
+                >
+                  <Text style={styles.inventoryButtonText}>+1</Text>
+                </Pressable>
+              </View>
+            ) : null}
             {product.validationIssues.length > 0 ? (
               <Text style={styles.warningText}>{product.validationIssues[0]?.message}</Text>
             ) : null}
+                </>
+              );
+            })()}
           </View>
         ))}
       </View>
@@ -206,6 +270,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingHorizontal: 16,
     paddingVertical: 14
+  },
+  healthyText: {
+    color: palette.accent
+  },
+  inventoryButton: {
+    alignItems: "center",
+    backgroundColor: palette.accentMuted,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 34,
+    minWidth: 46,
+    paddingHorizontal: 10
+  },
+  inventoryButtonText: {
+    color: palette.accent,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  inventoryRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10
+  },
+  inventoryValue: {
+    color: palette.ink,
+    fontSize: 13,
+    fontWeight: "700"
   },
   list: {
     gap: 12

@@ -114,6 +114,59 @@ export function SellerOverviewScreen({
         </View>
       ) : null}
 
+      {data ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Performance</Text>
+          <View style={styles.summaryGrid}>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryLabel}>Impressions</Text>
+              <Text style={styles.summaryValue}>{data.analytics.impressions}</Text>
+            </View>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryLabel}>Viewer opens</Text>
+              <Text style={styles.summaryValue}>
+                {data.analytics.viewerOpens} · {data.analytics.viewerOpenRate.toFixed(1)}%
+              </Text>
+            </View>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryLabel}>Adds to cart</Text>
+              <Text style={styles.summaryValue}>{data.analytics.addToCarts}</Text>
+            </View>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryLabel}>Orders</Text>
+              <Text style={styles.summaryValue}>
+                {data.analytics.conversions} · {data.analytics.conversionRate.toFixed(1)}%
+              </Text>
+            </View>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryLabel}>Live posts</Text>
+              <Text style={styles.summaryValue}>{data.analytics.livePosts}</Text>
+            </View>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryLabel}>Published products</Text>
+              <Text style={styles.summaryValue}>{data.analytics.publishedProducts}</Text>
+            </View>
+          </View>
+          {data.analytics.topPost ? (
+            <View style={styles.highlightCard}>
+              <Text style={styles.summaryLabel}>Top post</Text>
+              <Text style={styles.highlightTitle}>{data.analytics.topPost.productName}</Text>
+              <Text style={styles.highlightBody} numberOfLines={2}>
+                {data.analytics.topPost.caption}
+              </Text>
+              <Text style={styles.highlightMeta}>
+                {data.analytics.topPost.impressions} impressions ·{" "}
+                {data.analytics.topPost.conversionRate.toFixed(1)}% conversion
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.listItem}>
+              No post performance data yet. Publish content and drive the first buyer sessions.
+            </Text>
+          )}
+        </View>
+      ) : null}
+
       {data?.missingRequirements?.length ? (
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>{dictionary.sellerMissingRequirements}</Text>
@@ -225,6 +278,27 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 12
+  },
+  highlightBody: {
+    color: palette.ink,
+    fontSize: 14,
+    lineHeight: 20
+  },
+  highlightCard: {
+    backgroundColor: palette.accentMuted,
+    borderRadius: 22,
+    gap: 6,
+    padding: 16
+  },
+  highlightMeta: {
+    color: palette.muted,
+    fontSize: 13,
+    lineHeight: 18
+  },
+  highlightTitle: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: "700"
   },
   heroCard: {
     backgroundColor: palette.card,

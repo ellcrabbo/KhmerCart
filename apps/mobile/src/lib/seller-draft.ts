@@ -11,14 +11,20 @@ export type PersistedSellerUploadAsset = {
 };
 
 export type PersistedSellerVideoDraft = {
+  attachmentProductIds: string[];
   caption: string;
   durationSec: number | null;
+  processingPostId?: string | null;
   posterAsset: PersistedSellerUploadAsset | null;
+  posterObjectKey?: string | null;
   posterLabel: string | null;
   posterPreviewUrl: string | null;
   productId: string | null;
+  statusDetail: string | null;
   status: "DRAFT" | "UPLOADING" | "PROCESSING" | "READY" | "FAILED" | "PUBLISHED";
+  uploadProgress: number;
   videoAsset: PersistedSellerUploadAsset | null;
+  videoObjectKey?: string | null;
   videoLabel: string | null;
 };
 

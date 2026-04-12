@@ -13,7 +13,8 @@ import { SellerServiceError } from "./seller";
 import {
   createSignedDownloadUrl,
   createSignedUploadUrl,
-  getSignedUrlTtlSeconds
+  getSignedUrlTtlSeconds,
+  readObjectMetadata
 } from "./storage";
 
 type BuyerVideoCursor = {
@@ -293,6 +294,22 @@ type RequestSellerVideoPostUploadInput = {
   userId: string;
 };
 
+type ProcessSellerVideoPostInput = {
+  actorUserId?: string;
+  ipAddress?: string | null;
+  postId: string;
+  targetStatus?: string;
+  userAgent?: string | null;
+  userId: string;
+};
+
+const MAX_VIDEO_UPLOAD_BYTES = 250 * 1024 * 1024;
+const MAX_POSTER_UPLOAD_BYTES = 20 * 1024 * 1024;
+const MIN_VIDEO_DURATION_SEC = 3;
+const MAX_VIDEO_DURATION_SEC = 180;
+const MIN_VERTICAL_ASPECT_RATIO = 0.45;
+const MAX_VERTICAL_ASPECT_RATIO = 0.8;
+
 type RecordVideoPostMetricInput = {
   eventType:
     | "IMPRESSION"
@@ -460,6 +477,95 @@ function parseStatus(value: string | undefined): VideoPostStatus {
   }
 
   return VideoPostStatus.DRAFT;
+}
+
+function parseProcessTargetStatus(value: string | undefined): VideoPostStatus {
+  const normalized = parseStatus(value);
+
+  if (normalized === VideoPostStatus.PUBLISHED) {
+    return VideoPostStatus.PUBLISHED;
+  }
+
+  return VideoPostStatus.READY;
+}
+
+function resolveProcessingFailureMessage(error: unknown) {
+  if (error instanceof VideoPostServiceError) {
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unable to validate uploaded media.";
+}
+
+function validateProcessedVideoPostShape(input: {
+  aspectRatio: number | null;
+  durationSec: number | null;
+  posterContentLength: number | null;
+  videoContentLength: number | null;
+}) {
+  if (input.durationSec === null) {
+    throw new VideoPostServiceError(
+      "BAD_REQUEST",
+      "Video duration could not be determined. Re-select the clip before publishing.",
+      400
+    );
+  }
+
+  if (
+    input.durationSec < MIN_VIDEO_DURATION_SEC ||
+    input.durationSec > MAX_VIDEO_DURATION_SEC
+  ) {
+    throw new VideoPostServiceError(
+      "BAD_REQUEST",
+      `Video duration must be between ${MIN_VIDEO_DURATION_SEC} and ${MAX_VIDEO_DURATION_SEC} seconds.`,
+      400
+    );
+  }
+
+  if (input.aspectRatio === null) {
+    throw new VideoPostServiceError(
+      "BAD_REQUEST",
+      "Video aspect ratio could not be determined. Re-select the clip before publishing.",
+      400
+    );
+  }
+
+  if (
+    input.aspectRatio < MIN_VERTICAL_ASPECT_RATIO ||
+    input.aspectRatio > MAX_VERTICAL_ASPECT_RATIO
+  ) {
+    throw new VideoPostServiceError(
+      "BAD_REQUEST",
+      "Video must be shot in a vertical mobile-friendly format before publishing.",
+      400
+    );
+  }
+
+  if (
+    input.videoContentLength !== null &&
+    input.videoContentLength > MAX_VIDEO_UPLOAD_BYTES
+  ) {
+    throw new VideoPostServiceError(
+      "BAD_REQUEST",
+      "Video file is too large to process for seller publishing.",
+      400
+    );
+  }
+
+  if (
+    input.posterContentLength !== null &&
+    input.posterContentLength > MAX_POSTER_UPLOAD_BYTES
+  ) {
+    throw new VideoPostServiceError(
+      "BAD_REQUEST",
+      "Poster image is too large to process for seller publishing.",
+      400
+    );
+  }
 }
 
 function mapLeadVariant(variant: PublicVideoPostRecord["product"]["variants"][number] & {
@@ -781,6 +887,8 @@ export async function createSellerVideoPost(
   const videoKey = input.videoKey?.trim();
   const posterKey = input.posterKey?.trim() || null;
   const desiredStatus = parseStatus(input.status);
+  const initialStatus =
+    desiredStatus === VideoPostStatus.PUBLISHED ? VideoPostStatus.PROCESSING : desiredStatus;
   const attachmentProductIds = [
     ...new Set(
       (input.attachmentProductIds ?? []).map((value) => value.trim()).filter(Boolean)
@@ -868,21 +976,15 @@ export async function createSellerVideoPost(
           typeof input.durationSec === "number" && Number.isFinite(input.durationSec)
             ? Math.max(1, Math.round(input.durationSec))
             : null,
-        moderationStatus:
-          desiredStatus === VideoPostStatus.PUBLISHED
-            ? VideoPostModerationStatus.APPROVED
-            : VideoPostModerationStatus.PENDING,
+        moderationStatus: VideoPostModerationStatus.PENDING,
         posterKey,
-        processedAt:
-          desiredStatus === VideoPostStatus.READY || desiredStatus === VideoPostStatus.PUBLISHED
-            ? new Date()
-            : null,
+        processedAt: initialStatus === VideoPostStatus.READY ? new Date() : null,
         processingStartedAt:
-          desiredStatus === VideoPostStatus.PROCESSING ? new Date() : null,
+          initialStatus === VideoPostStatus.PROCESSING ? new Date() : null,
         productId: product.id,
-        publishedAt: desiredStatus === VideoPostStatus.PUBLISHED ? new Date() : null,
+        publishedAt: null,
         sellerId: seller.id,
-        status: desiredStatus,
+        status: initialStatus,
         videoKey
       },
       include: sellerVideoPostInclude
@@ -917,6 +1019,7 @@ export async function createSellerVideoPost(
         moderationStatus: post.moderationStatus,
         productId: post.productId,
         publishedAt: serializeDate(post.publishedAt),
+        requestedStatus: desiredStatus,
         status: post.status,
         videoKey: post.videoKey
       },
@@ -937,6 +1040,162 @@ export async function createSellerVideoPost(
   });
 
   return mapSellerVideoPost(created);
+}
+
+export async function processSellerVideoPost(
+  input: ProcessSellerVideoPostInput
+): Promise<SellerVideoPost> {
+  const targetStatus = parseProcessTargetStatus(input.targetStatus);
+  const seller = await getSellerProfileForUser(input.userId);
+  const existing = await prisma.videoPost.findFirst({
+    include: sellerVideoPostInclude,
+    where: {
+      id: input.postId,
+      sellerId: seller.id
+    }
+  });
+
+  if (!existing) {
+    throw new VideoPostServiceError("NOT_FOUND", "Video post not found for this seller.", 404);
+  }
+
+  await prisma.videoPost.update({
+    data: {
+      processingError: null,
+      processedAt: null,
+      processingStartedAt: new Date(),
+      status: VideoPostStatus.PROCESSING
+    },
+    where: {
+      id: existing.id
+    }
+  });
+
+  try {
+    if (
+      targetStatus === VideoPostStatus.PUBLISHED &&
+      !canSellerListProducts(seller.kycStatus)
+    ) {
+      throw new VideoPostServiceError(
+        "BAD_REQUEST",
+        "Seller account must be approved before publishing video posts.",
+        400
+      );
+    }
+
+    if (
+      targetStatus === VideoPostStatus.PUBLISHED &&
+      (existing.product.status !== ProductStatus.ACTIVE ||
+        existing.product.moderationStatus !== ProductModerationStatus.APPROVED)
+    ) {
+      throw new VideoPostServiceError(
+        "BAD_REQUEST",
+        "Publish an approved active product before attaching it to a public video post.",
+        400
+      );
+    }
+
+    const [videoMetadata, posterMetadata] = await Promise.all([
+      readObjectMetadata(existing.videoKey),
+      existing.posterKey ? readObjectMetadata(existing.posterKey) : null
+    ]);
+
+    if (!videoMetadata.exists) {
+      throw new VideoPostServiceError("BAD_REQUEST", "Uploaded video file could not be found.", 400);
+    }
+
+    if (!videoMetadata.contentType?.startsWith("video/")) {
+      throw new VideoPostServiceError(
+        "BAD_REQUEST",
+        "Uploaded video file is not a valid video object.",
+        400
+      );
+    }
+
+    if ((videoMetadata.contentLength ?? 0) <= 0) {
+      throw new VideoPostServiceError("BAD_REQUEST", "Uploaded video file is empty.", 400);
+    }
+
+    if (existing.posterKey) {
+      if (!posterMetadata?.exists) {
+        throw new VideoPostServiceError(
+          "BAD_REQUEST",
+          "Uploaded poster file could not be found.",
+          400
+        );
+      }
+
+      if (!posterMetadata.contentType?.startsWith("image/")) {
+        throw new VideoPostServiceError(
+          "BAD_REQUEST",
+          "Uploaded poster file is not a valid image object.",
+          400
+        );
+      }
+    }
+
+    validateProcessedVideoPostShape({
+      aspectRatio: existing.aspectRatio,
+      durationSec: existing.durationSec,
+      posterContentLength: posterMetadata?.contentLength ?? null,
+      videoContentLength: videoMetadata.contentLength ?? null
+    });
+
+    const processed = await prisma.videoPost.update({
+      data: {
+        moderationStatus:
+          targetStatus === VideoPostStatus.PUBLISHED
+            ? VideoPostModerationStatus.APPROVED
+            : existing.moderationStatus,
+        processedAt: new Date(),
+        processingError: null,
+        publishedAt:
+          targetStatus === VideoPostStatus.PUBLISHED
+            ? existing.publishedAt ?? new Date()
+            : existing.publishedAt,
+        status: targetStatus
+      },
+      include: sellerVideoPostInclude,
+      where: {
+        id: existing.id
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        action:
+          targetStatus === VideoPostStatus.PUBLISHED
+            ? "VIDEO_POST_PUBLISHED"
+            : "VIDEO_POST_PROCESSED",
+        actorUserId: input.actorUserId ?? input.userId,
+        afterData: {
+          processedAt: serializeDate(processed.processedAt),
+          publishedAt: serializeDate(processed.publishedAt),
+          status: processed.status
+        },
+        beforeData: Prisma.JsonNull,
+        entityId: processed.id,
+        entityType: "VideoPost",
+        ipAddress: input.ipAddress ?? null,
+        userAgent: input.userAgent ?? null
+      }
+    });
+
+    return mapSellerVideoPost(processed);
+  } catch (error) {
+    await prisma.videoPost.update({
+      data: {
+        processingError: resolveProcessingFailureMessage(error),
+        processedAt: null,
+        status: VideoPostStatus.FAILED
+      },
+      where: {
+        id: existing.id
+      }
+    });
+
+    throw error;
+  }
 }
 
 export async function getSellerVideoPostsData(userId: string): Promise<SellerVideoPostsData> {

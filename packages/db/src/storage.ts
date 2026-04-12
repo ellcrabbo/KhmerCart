@@ -1,4 +1,9 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getObjectStorageSettings } from "./env";
 
@@ -64,6 +69,43 @@ export async function createSignedDownloadUrl(key: string): Promise<string> {
   });
 
   return getSignedUrl(client, command, { expiresIn: SIGNED_URL_TTL_SECONDS });
+}
+
+export async function readObjectMetadata(key: string): Promise<{
+  contentLength: number | null;
+  contentType: string | null;
+  exists: boolean;
+}> {
+  const settings = getRequiredStorageSettings();
+  const client = createS3Client();
+
+  try {
+    const result = await client.send(
+      new HeadObjectCommand({
+        Bucket: settings.bucket,
+        Key: key
+      })
+    );
+
+    return {
+      contentLength:
+        typeof result.ContentLength === "number" ? result.ContentLength : null,
+      contentType: result.ContentType ?? null,
+      exists: true
+    };
+  } catch (error) {
+    const metadataError = error as { $metadata?: { httpStatusCode?: number } };
+
+    if (metadataError.$metadata?.httpStatusCode === 404) {
+      return {
+        contentLength: null,
+        contentType: null,
+        exists: false
+      };
+    }
+
+    throw error;
+  }
 }
 
 export function getSignedUrlTtlSeconds(): number {

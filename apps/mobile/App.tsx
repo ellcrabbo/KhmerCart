@@ -55,6 +55,8 @@ import {
   submitCheckout,
   toggleFollowedSellerState,
   toggleSavedProductState,
+  updateSellerVideoPost,
+  updateSellerVariantInventory,
   verifyOtp,
 } from "./src/api/client";
 import { AuthPanel } from "./src/components/AuthPanel";
@@ -194,14 +196,20 @@ const initialSellerVideoDraft: SellerVideoDraftState & {
   posterAsset: SelectedUploadAsset | null;
   videoAsset: SelectedUploadAsset | null;
 } = {
+  attachmentProductIds: [],
   caption: "",
   durationSec: null,
+  processingPostId: null,
   posterAsset: null,
+  posterObjectKey: null,
   posterLabel: null,
   posterPreviewUrl: null,
   productId: null,
+  statusDetail: null,
   status: "DRAFT",
+  uploadProgress: 0,
   videoAsset: null,
+  videoObjectKey: null,
   videoLabel: null,
 };
 
@@ -467,6 +475,14 @@ export default function App() {
         );
         setSellerVideoDraft((current) => ({
           ...current,
+          attachmentProductIds:
+            current.attachmentProductIds.length > 0
+              ? current.attachmentProductIds
+              : current.productId
+                ? [current.productId]
+                : chooseDefaultSellerVideoProductId(catalog)
+                  ? [chooseDefaultSellerVideoProductId(catalog) as string]
+                  : [],
           productId:
             current.productId ?? chooseDefaultSellerVideoProductId(catalog),
         }));
@@ -922,6 +938,14 @@ export default function App() {
       );
       setSellerVideoDraft((current) => ({
         ...current,
+        attachmentProductIds:
+          current.attachmentProductIds.length > 0
+            ? current.attachmentProductIds
+            : current.productId
+              ? [current.productId]
+              : chooseDefaultSellerVideoProductId(catalog)
+                ? [chooseDefaultSellerVideoProductId(catalog) as string]
+                : [],
         productId:
           current.productId ?? chooseDefaultSellerVideoProductId(catalog),
       }));
@@ -1079,10 +1103,18 @@ export default function App() {
   }
 
   function handleChangeSellerProductDraft(
-    field: keyof CreateSellerProductInput | "inventoryQuantity" | "priceMinor",
+    field:
+      | keyof CreateSellerProductInput
+      | "inventoryQuantity"
+      | "priceMinor"
+      | "reorderPoint",
     value: string,
   ) {
-    if (field === "inventoryQuantity" || field === "priceMinor") {
+    if (
+      field === "inventoryQuantity" ||
+      field === "priceMinor" ||
+      field === "reorderPoint"
+    ) {
       setSellerProductDraft((current) => ({
         ...current,
         variants: [
@@ -1096,6 +1128,10 @@ export default function App() {
               field === "priceMinor"
                 ? Number.parseInt(value || "0", 10) || 0
                 : (current.variants?.[0]?.priceMinor ?? 0),
+            reorderPoint:
+              field === "reorderPoint"
+                ? Number.parseInt(value || "0", 10) || 0
+                : (current.variants?.[0]?.reorderPoint ?? 0),
           },
         ],
       }));
@@ -1155,6 +1191,7 @@ export default function App() {
     token: string,
     asset: SelectedUploadAsset,
     fileRole: "POSTER" | "VIDEO",
+    onProgress?: (progress: number) => void,
   ) {
     const uploadRequest = await requestSellerVideoPostUpload(token, {
       contentType: asset.mimeType,
@@ -1163,19 +1200,120 @@ export default function App() {
     });
     const localResponse = await fetch(asset.uri);
     const blob = await localResponse.blob();
-    const uploadResponse = await fetch(uploadRequest.uploadUrl, {
-      body: blob,
-      headers: {
-        "Content-Type": asset.mimeType,
-      },
-      method: "PUT",
+
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.open("PUT", uploadRequest.uploadUrl);
+      xhr.setRequestHeader("Content-Type", asset.mimeType);
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) {
+          return;
+        }
+
+        onProgress?.(Math.round((event.loaded / event.total) * 100));
+      };
+      xhr.onerror = () => {
+        reject(new Error(`Unable to upload ${fileRole.toLowerCase()} file.`));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          onProgress?.(100);
+          resolve();
+          return;
+        }
+
+        reject(new Error(`Unable to upload ${fileRole.toLowerCase()} file.`));
+      };
+      xhr.send(blob);
     });
 
-    if (!uploadResponse.ok) {
-      throw new Error(`Unable to upload ${fileRole.toLowerCase()} file.`);
+    return uploadRequest.key;
+  }
+
+  function updateSellerDraftUploadState(
+    progress: number,
+    statusDetail: string,
+    status?: SellerVideoDraftState["status"],
+  ) {
+    setSellerVideoDraft((current) => ({
+      ...current,
+      status: status ?? current.status,
+      statusDetail,
+      uploadProgress: progress,
+    }));
+  }
+
+  async function ensureUploadedSellerAsset(input: {
+    asset: SelectedUploadAsset | null;
+    existingKey: string | null;
+    fileRole: "POSTER" | "VIDEO";
+    progressRange: [number, number];
+    token: string;
+  }) {
+    if (!input.asset) {
+      return null;
     }
 
-    return uploadRequest.key;
+    if (input.existingKey) {
+      return input.existingKey;
+    }
+
+    const [progressStart, progressEnd] = input.progressRange;
+    const key = await uploadSelectedAsset(
+      input.token,
+      input.asset,
+      input.fileRole,
+      (fileProgress) => {
+        const mappedProgress =
+          progressStart +
+          Math.round(((progressEnd - progressStart) * Math.max(0, Math.min(fileProgress, 100))) / 100);
+
+        updateSellerDraftUploadState(
+          mappedProgress,
+          `Uploading ${input.fileRole.toLowerCase()} asset.`,
+          "UPLOADING",
+        );
+      },
+    );
+
+    setSellerVideoDraft((current) => ({
+      ...current,
+      posterObjectKey:
+        input.fileRole === "POSTER" ? key : current.posterObjectKey,
+      videoObjectKey:
+        input.fileRole === "VIDEO" ? key : current.videoObjectKey,
+    }));
+
+    return key;
+  }
+
+  async function finalizeSellerVideoPublish(
+    token: string,
+    postId: string,
+  ) {
+    updateSellerDraftUploadState(92, "Processing uploaded media on the server.", "PROCESSING");
+    const finalizedPost = await updateSellerVideoPost(token, postId, {
+      status: "PUBLISHED",
+    });
+
+    setSellerVideoDraft((current) => ({
+      ...current,
+      processingPostId: postId,
+      status: "PUBLISHED",
+      statusDetail: "Post processed and synced to the buyer feed.",
+      uploadProgress: 100,
+    }));
+
+    return finalizedPost;
+  }
+
+  async function handleResumeSellerVideoDraftPublish() {
+    if (!sessionToken) {
+      return;
+    }
+
+    await handleCreateSellerVideoPost("PUBLISHED", true);
   }
 
   async function handlePickSellerVideo() {
@@ -1189,8 +1327,13 @@ export default function App() {
       setSellerVideoDraft((current) => ({
         ...current,
         durationSec: asset.durationSec,
+        processingPostId: null,
+        status: "DRAFT",
+        statusDetail: "Video selected. Ready for upload.",
+        uploadProgress: 0,
         videoAsset: asset,
         videoLabel: asset.fileName,
+        videoObjectKey: null,
       }));
       setSellerMessage("Video selected for the next post.");
       setSellerError(null);
@@ -1211,9 +1354,13 @@ export default function App() {
 
       setSellerVideoDraft((current) => ({
         ...current,
+        processingPostId: null,
         posterAsset: asset,
+        posterObjectKey: null,
         posterLabel: asset.fileName,
         posterPreviewUrl: asset.uri,
+        status: "DRAFT",
+        statusDetail: "Poster selected for the next post.",
       }));
       setSellerMessage("Poster selected for the next post.");
       setSellerError(null);
@@ -1234,8 +1381,47 @@ export default function App() {
   function handleSelectSellerVideoProduct(productId: string) {
     setSellerVideoDraft((current) => ({
       ...current,
+      attachmentProductIds: current.attachmentProductIds.includes(productId)
+        ? current.attachmentProductIds
+        : [productId, ...current.attachmentProductIds].slice(0, 4),
       productId,
+      statusDetail: "Primary product attached to the post.",
     }));
+  }
+
+  async function handleRepublishSellerVideoPost(postId: string) {
+    if (!sessionToken) {
+      return;
+    }
+
+    setIsSellerSaving(true);
+    setSellerError(null);
+    setSellerMessage(null);
+
+    try {
+      const processedPost = await updateSellerVideoPost(sessionToken, postId, {
+        status: "PUBLISHED",
+      });
+      await refreshSellerWorkspace(sessionToken);
+      const nextFeed = await listVideoFeed();
+
+      setFeedState(nextFeed);
+      setFeedError(null);
+      setIsFeedLoading(false);
+      setSellerMessage(
+        processedPost.moderationStatus === "APPROVED"
+          ? "Video post published."
+          : "Video post processed and awaiting moderation.",
+      );
+    } catch (error) {
+      setSellerError(
+        error instanceof Error
+          ? error.message
+          : "Unable to publish the selected video post.",
+      );
+    } finally {
+      setIsSellerSaving(false);
+    }
   }
 
   function handleChangeSellerShipmentDraft(
@@ -1300,7 +1486,11 @@ export default function App() {
       await refreshSellerWorkspace(sessionToken);
       setSellerVideoDraft((current) => ({
         ...current,
+        attachmentProductIds: current.attachmentProductIds.includes(createdProduct.id)
+          ? current.attachmentProductIds
+          : [createdProduct.id, ...current.attachmentProductIds].slice(0, 4),
         productId: createdProduct.id,
+        statusDetail: "Listing created and attached as the primary product.",
       }));
       setSellerProductDraft(initialSellerProductDraft);
       setSellerMessage(
@@ -1317,24 +1507,52 @@ export default function App() {
     }
   }
 
-  async function handleCreateSellerVideoPost(
-    status: CreateSellerVideoPostInput["status"],
+  async function handleUpdateSellerVariantInventory(
+    variantId: string,
+    nextQuantity: number,
   ) {
     if (!sessionToken) {
       return;
     }
 
-    if (!sellerVideoDraft.videoAsset) {
+    setIsSellerSaving(true);
+    setSellerError(null);
+    setSellerMessage(null);
+
+    try {
+      await updateSellerVariantInventory(sessionToken, variantId, nextQuantity);
+      await refreshSellerWorkspace(sessionToken);
+      setSellerMessage("Inventory updated.");
+    } catch (error) {
+      setSellerError(
+        error instanceof Error ? error.message : "Unable to update inventory.",
+      );
+    } finally {
+      setIsSellerSaving(false);
+    }
+  }
+
+  async function handleCreateSellerVideoPost(
+    status: CreateSellerVideoPostInput["status"],
+    resumeFromDraft = false,
+  ) {
+    if (!sessionToken) {
+      return;
+    }
+
+    const currentDraft = sellerVideoDraft;
+
+    if (!currentDraft.videoAsset) {
       setSellerError("Select a video before saving a post.");
       return;
     }
 
-    if (!sellerVideoDraft.productId) {
+    if (!currentDraft.productId) {
       setSellerError("Attach a product before saving a post.");
       return;
     }
 
-    if (!sellerVideoDraft.caption.trim()) {
+    if (!currentDraft.caption.trim()) {
       setSellerError("Add a caption before saving a post.");
       return;
     }
@@ -1345,37 +1563,95 @@ export default function App() {
     setSellerVideoDraft((current) => ({
       ...current,
       status: status === "PUBLISHED" ? "UPLOADING" : "DRAFT",
+      statusDetail:
+        status === "PUBLISHED"
+          ? "Uploading media to seller storage."
+          : "Saving draft media.",
+      uploadProgress:
+        status === "PUBLISHED"
+          ? current.processingPostId && resumeFromDraft
+            ? 90
+            : 5
+          : 0,
     }));
 
     try {
-      const [videoKey, posterKey] = await Promise.all([
-        uploadSelectedAsset(sessionToken, sellerVideoDraft.videoAsset, "VIDEO"),
-        sellerVideoDraft.posterAsset
-          ? uploadSelectedAsset(
+      const videoKey = await ensureUploadedSellerAsset({
+        asset: currentDraft.videoAsset,
+        existingKey: currentDraft.videoObjectKey,
+        fileRole: "VIDEO",
+        progressRange: [10, currentDraft.posterAsset ? 70 : 85],
+        token: sessionToken,
+      });
+      const posterKey = await ensureUploadedSellerAsset({
+        asset: currentDraft.posterAsset,
+        existingKey: currentDraft.posterObjectKey,
+        fileRole: "POSTER",
+        progressRange: [70, 85],
+        token: sessionToken,
+      });
+
+      if (!videoKey) {
+        throw new Error("Video upload did not complete.");
+      }
+
+      updateSellerDraftUploadState(
+        status === "PUBLISHED" ? 88 : 100,
+        status === "PUBLISHED"
+          ? "Media uploaded. Finalizing post for the buyer feed."
+          : "Draft uploaded to seller storage.",
+        status === "PUBLISHED" ? "PROCESSING" : "DRAFT",
+      );
+
+      const processingPostId =
+        status === "PUBLISHED" && currentDraft.processingPostId
+          ? currentDraft.processingPostId
+          : null;
+      const createdPost =
+        processingPostId
+          ? null
+          : await createSellerVideoPost(sessionToken, {
+              attachmentProductIds: currentDraft.attachmentProductIds.length
+                ? currentDraft.attachmentProductIds
+                : currentDraft.productId
+                  ? [currentDraft.productId]
+                  : [],
+              aspectRatio: currentDraft.videoAsset.aspectRatio,
+              caption: currentDraft.caption.trim(),
+              durationSec: currentDraft.videoAsset.durationSec,
+              posterKey,
+              productId: currentDraft.productId,
+              status: status === "PUBLISHED" ? "PROCESSING" : status,
+              videoKey,
+            });
+
+      if (createdPost?.id) {
+        setSellerVideoDraft((current) => ({
+          ...current,
+          processingPostId: createdPost.id,
+          posterObjectKey: posterKey,
+          videoObjectKey: videoKey,
+        }));
+      }
+
+      const finalizedPost =
+        status === "PUBLISHED"
+          ? await finalizeSellerVideoPublish(
               sessionToken,
-              sellerVideoDraft.posterAsset,
-              "POSTER",
+              processingPostId ?? createdPost!.id,
             )
-          : Promise.resolve(null),
-      ]);
+          : createdPost!;
 
       setSellerVideoDraft((current) => ({
         ...current,
-        status: status === "PUBLISHED" ? "PROCESSING" : "DRAFT",
+        status: status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+        statusDetail:
+          status === "PUBLISHED"
+            ? "Post processed and synced to the buyer feed."
+            : "Draft saved.",
+        processingPostId: status === "PUBLISHED" ? finalizedPost.id : null,
+        uploadProgress: 100,
       }));
-
-      const createdPost = await createSellerVideoPost(sessionToken, {
-        attachmentProductIds: sellerVideoDraft.productId
-          ? [sellerVideoDraft.productId]
-          : [],
-        aspectRatio: sellerVideoDraft.videoAsset.aspectRatio,
-        caption: sellerVideoDraft.caption.trim(),
-        durationSec: sellerVideoDraft.videoAsset.durationSec,
-        posterKey,
-        productId: sellerVideoDraft.productId,
-        status,
-        videoKey,
-      });
       await refreshSellerWorkspace(sessionToken);
       if (status === "PUBLISHED") {
         const nextFeed = await listVideoFeed();
@@ -1390,6 +1666,18 @@ export default function App() {
       await clearPersistedSellerVideoDraft();
       setSellerVideoDraft((current) => ({
         ...initialSellerVideoDraft,
+        attachmentProductIds:
+          current.productId ??
+          (sellerCatalog
+            ? chooseDefaultSellerVideoProductId(sellerCatalog)
+            : null)
+            ? [
+                (current.productId ??
+                  (sellerCatalog
+                    ? chooseDefaultSellerVideoProductId(sellerCatalog)
+                    : null)) as string,
+              ]
+            : [],
         productId:
           current.productId ??
           (sellerCatalog
@@ -1398,7 +1686,7 @@ export default function App() {
       }));
       setSellerMessage(
         status === "PUBLISHED"
-          ? createdPost.moderationStatus === "APPROVED"
+          ? finalizedPost.moderationStatus === "APPROVED"
             ? "Video post published."
             : "Video post submitted and queued for moderation."
           : "Video post saved as draft.",
@@ -1407,6 +1695,8 @@ export default function App() {
       setSellerVideoDraft((current) => ({
         ...current,
         status: "FAILED",
+        statusDetail:
+          error instanceof Error ? error.message : "Unable to create seller video post.",
       }));
       setSellerError(
         error instanceof Error
@@ -2222,6 +2512,9 @@ export default function App() {
           message={sellerMessage}
           onChangeDraft={handleChangeSellerProductDraft}
           onCreate={handleCreateSellerListing}
+          onUpdateInventory={(variantId, nextQuantity) =>
+            void handleUpdateSellerVariantInventory(variantId, nextQuantity)
+          }
         />
       );
     }
@@ -2257,6 +2550,8 @@ export default function App() {
           onPickPoster={() => void handlePickSellerPoster()}
           onPickVideo={() => void handlePickSellerVideo()}
           onPublish={() => void handleCreateSellerVideoPost("PUBLISHED")}
+          onRepublishPost={(postId) => void handleRepublishSellerVideoPost(postId)}
+          onResumeDraft={() => void handleResumeSellerVideoDraftPublish()}
           onSaveDraft={() => void handleCreateSellerVideoPost("DRAFT")}
           onSelectProduct={handleSelectSellerVideoProduct}
         />
