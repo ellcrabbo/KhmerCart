@@ -1,10 +1,7 @@
 import type { BuyerVideoFeedItem } from "../api/client";
 import { formatMoney } from "../lib/format";
 import type { BuyerLocale } from "../lib/i18n";
-import {
-  getBuyerDictionary,
-  resolveAvailabilityFromState
-} from "../lib/i18n";
+import { getBuyerDictionary, resolveAvailabilityFromState } from "../lib/i18n";
 import { palette } from "../lib/theme";
 import {
   ActivityIndicator,
@@ -40,6 +37,15 @@ type VideoFeedCardProps = {
 const windowHeight = Dimensions.get("window").height;
 const cardHeight = Math.max(560, windowHeight - 170);
 
+function createSellerMonogram(slug: string) {
+  return slug
+    .split("-")
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 function VideoFeedCard({
   item,
   locale,
@@ -49,71 +55,97 @@ function VideoFeedCard({
 }: VideoFeedCardProps) {
   const dictionary = getBuyerDictionary(locale);
   const campaignBadges = item.campaignBadges ?? [];
+  const featuredImageUrl = item.product.featuredImageUrl ?? item.video.posterUrl;
+  const variantCount = item.product.variants?.length ?? 1;
+  const sellerMonogram = createSellerMonogram(item.seller.slug);
   const priceLabel = formatMoney(
     locale,
     item.product.pricing.currency,
     item.product.pricing.priceMinor
   );
+  const availabilityLabel = resolveAvailabilityFromState(locale, item.product.stock.state);
 
   return (
     <Pressable onPress={onOpenPost} style={styles.card}>
       <View style={styles.videoFrame}>
         {item.video.posterUrl ? (
-          <Image
-            source={{
-              uri: item.video.posterUrl
-            }}
-            style={styles.poster}
-          />
+          <Image source={{ uri: item.video.posterUrl }} style={styles.poster} />
         ) : null}
+        {featuredImageUrl ? (
+          <Image source={{ uri: featuredImageUrl }} style={styles.fallbackProductImage} />
+        ) : null}
+
+        <View style={styles.topGlow} />
+        <View style={styles.bottomShade} />
         <View style={styles.posterWash} />
 
         <View style={styles.overlay}>
           <View style={styles.overlayHeader}>
-            <View style={styles.liveChip}>
-              <Text style={styles.liveChipText}>LIVE DROP</Text>
+            <View style={styles.headerRow}>
+              <View style={styles.liveChip}>
+                <Text style={styles.liveChipText}>LIVE DROP</Text>
+              </View>
+              <View style={styles.metricChip}>
+                <Text style={styles.metricChipValue}>{item.product.stock.availableQuantity}</Text>
+                <Text style={styles.metricChipLabel}>ready to ship</Text>
+              </View>
             </View>
-            <View style={styles.creatorBadge}>
-              <Text style={styles.overlaySeller}>@{item.seller.slug}</Text>
-              <Text style={styles.overlayMeta}>{dictionary.featuredNow}</Text>
-            </View>
-          </View>
 
-          {item.isPinned || campaignBadges.length > 0 ? (
-            <View style={styles.badgeRow}>
-              {item.isPinned ? (
-                <View style={styles.feedBadge}>
-                  <Text style={styles.feedBadgeText}>Pinned</Text>
-                </View>
-              ) : null}
-              {campaignBadges.slice(0, 2).map((badge) => (
-                <View key={`${item.id}-${badge}`} style={styles.feedBadge}>
-                  <Text style={styles.feedBadgeText}>{badge.replaceAll("_", " ")}</Text>
-                </View>
-              ))}
+            <View style={styles.creatorBadge}>
+              <View style={styles.creatorAvatar}>
+                <Text style={styles.creatorAvatarText}>{sellerMonogram}</Text>
+              </View>
+              <View style={styles.creatorBadgeBody}>
+                <Text style={styles.overlaySeller}>@{item.seller.slug}</Text>
+                <Text style={styles.overlayMeta}>{dictionary.featuredNow}</Text>
+              </View>
             </View>
-          ) : null}
+
+            {item.isPinned || campaignBadges.length > 0 ? (
+              <View style={styles.badgeRow}>
+                {item.isPinned ? (
+                  <View style={styles.feedBadge}>
+                    <Text style={styles.feedBadgeText}>Pinned</Text>
+                  </View>
+                ) : null}
+                {campaignBadges.slice(0, 2).map((badge) => (
+                  <View key={`${item.id}-${badge}`} style={styles.feedBadge}>
+                    <Text style={styles.feedBadgeText}>{badge.replaceAll("_", " ")}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
 
           <View style={styles.overlayFooter}>
             <View style={styles.bottomRow}>
               <View style={styles.leftColumn}>
                 <View style={styles.captionBlock}>
+                  <View style={styles.categoryPill}>
+                    <Text style={styles.categoryPillText}>{item.product.category}</Text>
+                  </View>
                   <Text style={styles.caption}>{item.caption}</Text>
                   <Text style={styles.productName}>{item.product.name}</Text>
                   <Text style={styles.productMeta}>
-                    {priceLabel} ·{" "}
-                    {resolveAvailabilityFromState(locale, item.product.stock.state)}
+                    {priceLabel} · {availabilityLabel}
                   </Text>
                 </View>
 
                 <View style={styles.productChip}>
-                  <View style={styles.productChipThumb}>
-                    <Text style={styles.productChipThumbText}>KC</Text>
-                  </View>
+                  {featuredImageUrl ? (
+                    <Image source={{ uri: featuredImageUrl }} style={styles.productChipImage} />
+                  ) : (
+                    <View style={styles.productChipThumb}>
+                      <Text style={styles.productChipThumbText}>{sellerMonogram}</Text>
+                    </View>
+                  )}
                   <View style={styles.productChipBody}>
                     <Text style={styles.productChipLabel}>Featured product</Text>
                     <Text numberOfLines={1} style={styles.productChipTitle}>
                       {item.product.name}
+                    </Text>
+                    <Text style={styles.productChipMeta}>
+                      {variantCount} {variantCount === 1 ? "option" : "options"}
                     </Text>
                   </View>
                   <Text style={styles.productChipPrice}>{priceLabel}</Text>
@@ -129,10 +161,10 @@ function VideoFeedCard({
                   <Text style={styles.actionEmoji}>↗</Text>
                   <Text style={styles.actionLabel}>Share</Text>
                 </Pressable>
-                <View style={styles.actionBubble}>
+                <Pressable onPress={onOpenProduct} style={styles.actionBubble}>
                   <Text style={styles.actionEmoji}>▣</Text>
                   <Text style={styles.actionLabel}>Shop</Text>
-                </View>
+                </Pressable>
               </View>
             </View>
 
@@ -145,9 +177,7 @@ function VideoFeedCard({
             >
               <View>
                 <Text style={styles.buyButtonEyebrow}>Instant checkout</Text>
-                <Text style={styles.buyButtonText}>
-                  {dictionary.videoFeedBuyNow}
-                </Text>
+                <Text style={styles.buyButtonText}>{dictionary.videoFeedBuyNow}</Text>
               </View>
               <Text style={styles.buyButtonArrow}>›</Text>
             </Pressable>
@@ -234,16 +264,10 @@ export function VideoFeedScreen({
 }
 
 const styles = StyleSheet.create({
-  badgeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 12
-  },
   actionBubble: {
     alignItems: "center",
-    backgroundColor: "rgba(8, 7, 5, 0.48)",
-    borderColor: "rgba(255, 250, 242, 0.16)",
+    backgroundColor: "rgba(8, 7, 5, 0.62)",
+    borderColor: "rgba(255, 250, 242, 0.2)",
     borderRadius: 999,
     borderWidth: 1,
     gap: 4,
@@ -266,27 +290,25 @@ const styles = StyleSheet.create({
     gap: 10,
     justifyContent: "flex-end"
   },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12
+  },
   body: {
     color: palette.card,
     fontSize: 15,
     lineHeight: 22
   },
-  feedBadge: {
-    backgroundColor: "rgba(255, 250, 242, 0.16)",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8
-  },
-  feedBadgeText: {
-    color: palette.card,
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "uppercase"
-  },
   bottomRow: {
     alignItems: "flex-end",
     flexDirection: "row",
     gap: 14
+  },
+  bottomShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(5, 17, 15, 0.2)"
   },
   buyButton: {
     alignItems: "center",
@@ -332,13 +354,46 @@ const styles = StyleSheet.create({
     height: cardHeight,
     paddingHorizontal: 20
   },
+  categoryPill: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255, 250, 242, 0.12)",
+    borderRadius: 999,
+    marginBottom: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  categoryPillText: {
+    color: "#d7f0e7",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textTransform: "uppercase"
+  },
+  creatorAvatar: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 250, 242, 0.14)",
+    borderRadius: 999,
+    height: 38,
+    justifyContent: "center",
+    width: 38
+  },
+  creatorAvatarText: {
+    color: palette.card,
+    fontSize: 13,
+    fontWeight: "800"
+  },
   creatorBadge: {
+    alignItems: "center",
     alignSelf: "flex-start",
     backgroundColor: "rgba(12, 11, 8, 0.38)",
     borderRadius: 999,
-    gap: 4,
-    paddingHorizontal: 14,
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 10,
     paddingVertical: 10
+  },
+  creatorBadgeBody: {
+    gap: 3
   },
   errorText: {
     color: palette.card,
@@ -347,10 +402,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     textAlign: "center"
   },
+  fallbackProductImage: {
+    borderRadius: 26,
+    bottom: 116,
+    height: cardHeight * 0.58,
+    opacity: 0.34,
+    position: "absolute",
+    right: -38,
+    transform: [{ rotate: "-9deg" }],
+    width: cardHeight * 0.34
+  },
+  feedBadge: {
+    backgroundColor: "rgba(255, 250, 242, 0.16)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  feedBadgeText: {
+    color: palette.card,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
   footerLoading: {
     alignItems: "center",
     justifyContent: "center",
     minHeight: 80
+  },
+  headerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
   },
   heroBody: {
     color: palette.card,
@@ -382,6 +464,12 @@ const styles = StyleSheet.create({
     gap: 14,
     justifyContent: "flex-end"
   },
+  listContent: {
+    backgroundColor: palette.background,
+    gap: 18,
+    paddingBottom: 42,
+    paddingTop: 18
+  },
   liveChip: {
     alignSelf: "flex-start",
     backgroundColor: "#e44f2d",
@@ -395,11 +483,24 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.4
   },
-  listContent: {
-    backgroundColor: palette.background,
-    gap: 18,
-    paddingBottom: 42,
-    paddingTop: 18
+  metricChip: {
+    alignItems: "flex-end",
+    backgroundColor: "rgba(255, 250, 242, 0.12)",
+    borderRadius: 22,
+    paddingHorizontal: 12,
+    paddingVertical: 9
+  },
+  metricChipLabel: {
+    color: "#d7f0e7",
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  metricChipValue: {
+    color: palette.card,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 2
   },
   overlay: {
     bottom: 0,
@@ -432,12 +533,12 @@ const styles = StyleSheet.create({
   },
   posterWash: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(8, 7, 5, 0.14)"
+    backgroundColor: "rgba(4, 10, 9, 0.28)"
   },
   productChip: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 250, 242, 0.95)",
-    borderRadius: 22,
+    backgroundColor: "rgba(255, 250, 242, 0.96)",
+    borderRadius: 24,
     flexDirection: "row",
     gap: 12,
     paddingHorizontal: 12,
@@ -447,11 +548,22 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2
   },
+  productChipImage: {
+    backgroundColor: palette.accentMuted,
+    borderRadius: 16,
+    height: 52,
+    width: 52
+  },
   productChipLabel: {
     color: palette.muted,
     fontSize: 10,
     fontWeight: "700",
     textTransform: "uppercase"
+  },
+  productChipMeta: {
+    color: palette.muted,
+    fontSize: 11,
+    fontWeight: "600"
   },
   productChipPrice: {
     color: palette.ink,
@@ -461,10 +573,10 @@ const styles = StyleSheet.create({
   productChipThumb: {
     alignItems: "center",
     backgroundColor: palette.accent,
-    borderRadius: 14,
-    height: 46,
+    borderRadius: 16,
+    height: 52,
     justifyContent: "center",
-    width: 46
+    width: 52
   },
   productChipThumbText: {
     color: palette.card,
@@ -483,9 +595,9 @@ const styles = StyleSheet.create({
   },
   productName: {
     color: palette.card,
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "800",
-    lineHeight: 30
+    lineHeight: 34
   },
   stateScreen: {
     alignItems: "center",
@@ -500,6 +612,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     textAlign: "center"
+  },
+  topGlow: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(54, 151, 125, 0.16)"
   },
   videoFrame: {
     backgroundColor: "#0d0f0d",
