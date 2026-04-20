@@ -185,6 +185,12 @@ export type BuyerVideoFeedResult = {
 export type BuyerProductDetail = BuyerFeedItem & {
   bundles: Array<{
     id: string
+    items: Array<{
+      leadVariantId: string | null
+      productId: string
+      productName: string
+      productSlug: string
+    }>
     itemCount: number
     name: string
     productIds: string[]

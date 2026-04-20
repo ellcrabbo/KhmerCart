@@ -107,9 +107,10 @@ function ViewerPage({
 }: ViewerPageProps) {
   const dictionary = getBuyerDictionary(locale);
   const [selectedVariantId, setSelectedVariantId] = useState<string>(item.product.leadVariant.id);
+  const campaignBadges = item.campaignBadges ?? [];
   const [quantity, setQuantity] = useState(1);
   const variants = useMemo(
-    () => (item.product.variants.length > 0 ? item.product.variants : [item.product.leadVariant]),
+    () => ((item.product.variants ?? []).length > 0 ? item.product.variants : [item.product.leadVariant]),
     [item.product.leadVariant, item.product.variants]
   );
   const selectedVariant =
@@ -145,7 +146,7 @@ function ViewerPage({
               <Text style={styles.sideLabel}>Pinned</Text>
             </View>
           ) : null}
-          {item.campaignBadges.slice(0, 2).map((badge) => (
+          {campaignBadges.slice(0, 2).map((badge) => (
             <View key={`${item.id}-${badge}`} style={styles.sideBubble}>
               <Text style={styles.sideLabel}>{badge.replaceAll("_", " ")}</Text>
             </View>

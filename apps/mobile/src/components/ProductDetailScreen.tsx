@@ -19,6 +19,7 @@ import {
 import { palette } from "../lib/theme";
 
 type ProductDetailScreenProps = {
+  bundleActionError?: string | null;
   canAddToCart: boolean;
   cartCount: number;
   errorMessage: string | null;
@@ -28,6 +29,7 @@ type ProductDetailScreenProps = {
   }>;
   isFollowingSeller: boolean;
   isAddingToCart: boolean;
+  isAddingBundleToCart?: boolean;
   isEligibilityLoading: boolean;
   isLoading: boolean;
   isReviewLoading: boolean;
@@ -35,6 +37,7 @@ type ProductDetailScreenProps = {
   isSaved: boolean;
   locale: BuyerLocale;
   onAddToCart: (variantId: string, quantity?: number) => void;
+  onAddBundleToCart: (bundleId: string) => void;
   onBack: () => void;
   onOpenCart: () => void;
   onSubmitReview: (input: {
@@ -51,12 +54,14 @@ type ProductDetailScreenProps = {
 };
 
 export function ProductDetailScreen({
+  bundleActionError,
   canAddToCart,
   cartCount,
   errorMessage,
   eligibleReviewOrders,
   isFollowingSeller,
   isAddingToCart,
+  isAddingBundleToCart,
   isEligibilityLoading,
   isLoading,
   isReviewLoading,
@@ -64,6 +69,7 @@ export function ProductDetailScreen({
   isSaved,
   locale,
   onAddToCart,
+  onAddBundleToCart,
   onBack,
   onOpenCart,
   onSubmitReview,
@@ -296,6 +302,9 @@ export function ProductDetailScreen({
       {product.bundles.length > 0 ? (
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Bundle offers</Text>
+          {bundleActionError ? (
+            <Text style={styles.bundleError}>{bundleActionError}</Text>
+          ) : null}
           <View style={styles.bundleList}>
             {product.bundles.map((bundle) => (
               <View key={bundle.id} style={styles.bundleCard}>
@@ -303,6 +312,22 @@ export function ProductDetailScreen({
                 <Text style={styles.disclosureValue}>
                   {bundle.itemCount} bundled units across {bundle.productIds.length} products
                 </Text>
+                <Text style={styles.bundleItems}>
+                  {bundle.items.map((item) => item.productName).join(" · ")}
+                </Text>
+                <Pressable
+                  disabled={Boolean(isAddingBundleToCart)}
+                  onPress={() => onAddBundleToCart(bundle.id)}
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    pressed ? styles.buttonPressed : null,
+                    isAddingBundleToCart ? styles.buttonDisabled : null
+                  ]}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    {isAddingBundleToCart ? "Adding bundle..." : "Add bundle to cart"}
+                  </Text>
+                </Pressable>
               </View>
             ))}
           </View>
@@ -541,6 +566,16 @@ const styles = StyleSheet.create({
   },
   bundleList: {
     gap: 12
+  },
+  bundleError: {
+    color: palette.danger,
+    fontSize: 13,
+    lineHeight: 19
+  },
+  bundleItems: {
+    color: palette.muted,
+    fontSize: 13,
+    lineHeight: 20
   },
   bundleTitle: {
     color: palette.ink,

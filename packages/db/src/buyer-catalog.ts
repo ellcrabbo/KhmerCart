@@ -141,6 +141,12 @@ export type BuyerFeedResult = {
 export type BuyerProductDetail = BuyerFeedItem & {
   bundles: Array<{
     id: string;
+    items: Array<{
+      leadVariantId: string | null;
+      productId: string;
+      productName: string;
+      productSlug: string;
+    }>;
     itemCount: number;
     name: string;
     productIds: string[];
@@ -527,6 +533,27 @@ export async function getBuyerProductBySlug(slug: string): Promise<BuyerProductD
   const bundles = await prisma.productBundle.findMany({
     include: {
       items: {
+        include: {
+          product: {
+            include: {
+              variants: {
+                include: {
+                  inventory: true
+                },
+                orderBy: [{ isDefault: "desc" }, { position: "asc" }, { createdAt: "asc" }],
+                where: {
+                  currency: {
+                    not: null
+                  },
+                  isActive: true,
+                  priceMinor: {
+                    not: null
+                  }
+                }
+              }
+            }
+          }
+        },
         orderBy: [{ position: "asc" }, { createdAt: "asc" }],
       },
     },
@@ -547,6 +574,19 @@ export async function getBuyerProductBySlug(slug: string): Promise<BuyerProductD
     reviewCount,
     bundles.map((bundle) => ({
       id: bundle.id,
+      items: bundle.items.map((item) => {
+        const leadVariant =
+          item.product.variants.find(
+            (variant) => (variant.inventory?.availableQuantity ?? 0) > 0
+          ) ?? item.product.variants[0] ?? null;
+
+        return {
+          leadVariantId: leadVariant?.id ?? null,
+          productId: item.product.id,
+          productName: item.product.name,
+          productSlug: item.product.slug,
+        };
+      }),
       itemCount: bundle.items.reduce((sum, item) => sum + item.quantity, 0),
       name: bundle.name,
       productIds: bundle.items.map((item) => item.productId),

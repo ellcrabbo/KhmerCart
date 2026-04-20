@@ -48,6 +48,7 @@ function VideoFeedCard({
   onSharePost
 }: VideoFeedCardProps) {
   const dictionary = getBuyerDictionary(locale);
+  const campaignBadges = item.campaignBadges ?? [];
   const priceLabel = formatMoney(
     locale,
     item.product.pricing.currency,
@@ -78,14 +79,14 @@ function VideoFeedCard({
             </View>
           </View>
 
-          {item.isPinned || item.campaignBadges.length > 0 ? (
+          {item.isPinned || campaignBadges.length > 0 ? (
             <View style={styles.badgeRow}>
               {item.isPinned ? (
                 <View style={styles.feedBadge}>
                   <Text style={styles.feedBadgeText}>Pinned</Text>
                 </View>
               ) : null}
-              {item.campaignBadges.slice(0, 2).map((badge) => (
+              {campaignBadges.slice(0, 2).map((badge) => (
                 <View key={`${item.id}-${badge}`} style={styles.feedBadge}>
                   <Text style={styles.feedBadgeText}>{badge.replaceAll("_", " ")}</Text>
                 </View>

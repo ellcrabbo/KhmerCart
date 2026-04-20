@@ -66,6 +66,7 @@ import {
 import { AuthPanel } from "./src/components/AuthPanel";
 import { CartScreen } from "./src/components/CartScreen";
 import { OrdersScreen } from "./src/components/OrdersScreen";
+import { NotificationsScreen } from "./src/components/NotificationsScreen";
 import { OrderTrackingScreen } from "./src/components/OrderTrackingScreen";
 import { PaymentResultScreen } from "./src/components/PaymentResultScreen";
 import { PostViewerScreen } from "./src/components/PostViewerScreen";
@@ -296,6 +297,7 @@ export default function App() {
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] =
     useState<BuyerProductDetail | null>(null);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [productReviews, setProductReviews] =
     useState<ProductReviewSummary | null>(null);
   const [eligibleProductReviewOrders, setEligibleProductReviewOrders] =
@@ -306,6 +308,8 @@ export default function App() {
   const [isProductReviewLoading, setIsProductReviewLoading] = useState(false);
   const [isSubmittingProductReview, setIsSubmittingProductReview] =
     useState(false);
+  const [isAddingBundleToCart, setIsAddingBundleToCart] = useState(false);
+  const [bundleActionError, setBundleActionError] = useState<string | null>(null);
   const [productError, setProductError] = useState<string | null>(null);
   const [productReviewsError, setProductReviewsError] = useState<string | null>(
     null,
@@ -613,6 +617,7 @@ export default function App() {
   useEffect(() => {
     if (!selectedProductSlug) {
       setSelectedProduct(null);
+      setBundleActionError(null);
       setProductReviews(null);
       setEligibleProductReviewOrders([]);
       setProductError(null);
@@ -626,6 +631,7 @@ export default function App() {
     let isActive = true;
 
     setSelectedProduct(null);
+    setBundleActionError(null);
     setProductReviews(null);
     setEligibleProductReviewOrders([]);
     setProductError(null);
@@ -1106,6 +1112,7 @@ export default function App() {
     setFollowedSellers([]);
     setNotifications([]);
     setNotificationSummary({ unreadCount: 0 });
+    setIsNotificationsOpen(false);
   }
 
   function handleChangeSellerProfileField(
@@ -2033,6 +2040,55 @@ export default function App() {
     }
   }
 
+  async function handleAddBundleToCart(bundleId: string) {
+    if (!requireBuyerSession() || !sessionToken || !selectedProduct) {
+      return;
+    }
+
+    const bundle = selectedProduct.bundles.find((entry) => entry.id === bundleId);
+
+    if (!bundle) {
+      setBundleActionError("Bundle not found.");
+      return;
+    }
+
+    const missingVariant = bundle.items.find((item) => !item.leadVariantId);
+
+    if (missingVariant) {
+      setBundleActionError(
+        `Bundle item ${missingVariant.productName} is missing an available variant.`
+      );
+      return;
+    }
+
+    setIsAddingBundleToCart(true);
+    setBundleActionError(null);
+    setCartError(null);
+
+    try {
+      let nextCart = cart;
+
+      for (const item of bundle.items) {
+        nextCart = await mutateCartItem(sessionToken, {
+          action: "ADD",
+          quantity: 1,
+          variantId: item.leadVariantId ?? "",
+        });
+      }
+
+      setCart(nextCart);
+      Alert.alert("KhmerCart", `${bundle.name} added to cart.`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to add bundle to cart.";
+
+      setBundleActionError(message);
+      setCartError(message);
+    } finally {
+      setIsAddingBundleToCart(false);
+    }
+  }
+
   async function handleDecreaseItem(variantId: string) {
     if (!sessionToken) {
       return;
@@ -2442,9 +2498,17 @@ export default function App() {
                       <Text style={styles.sectionEyebrow}>
                         Notifications {notificationSummary.unreadCount > 0 ? `(${notificationSummary.unreadCount})` : ""}
                       </Text>
-                      {isAccountDataLoading ? (
-                        <ActivityIndicator color={palette.accent} size="small" />
-                      ) : null}
+                      <View style={styles.accountSectionActions}>
+                        {isAccountDataLoading ? (
+                          <ActivityIndicator color={palette.accent} size="small" />
+                        ) : null}
+                        <Pressable
+                          onPress={() => setIsNotificationsOpen(true)}
+                          style={styles.accountMiniButton}
+                        >
+                          <Text style={styles.accountMiniButtonText}>Open inbox</Text>
+                        </Pressable>
+                      </View>
                     </View>
                     {notifications.length ? (
                       <View style={styles.accountList}>
@@ -2748,7 +2812,16 @@ export default function App() {
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="dark" />
 
-        {trackingOrderId ? (
+        {isNotificationsOpen ? (
+          <NotificationsScreen
+            errorMessage={accountDataError}
+            isLoading={isAccountDataLoading}
+            items={notifications}
+            locale={locale}
+            onBack={() => setIsNotificationsOpen(false)}
+            onOpenNotification={(notification) => void handleOpenNotification(notification)}
+          />
+        ) : trackingOrderId ? (
           <OrderTrackingScreen
             errorMessage={trackingError}
             isLoading={isTrackingLoading}
@@ -2774,8 +2847,10 @@ export default function App() {
             cartCount={cart.itemCount}
             errorMessage={productError}
             eligibleReviewOrders={eligibleReviewOrders}
+            bundleActionError={bundleActionError}
             isFollowingSeller={isSelectedSellerFollowed}
             isAddingToCart={Boolean(addingVariantId)}
+            isAddingBundleToCart={isAddingBundleToCart}
             isEligibilityLoading={isProductReviewEligibilityLoading}
             isLoading={isProductLoading}
             isReviewLoading={isProductReviewLoading}
@@ -2783,6 +2858,7 @@ export default function App() {
             isSaved={isSelectedProductSaved}
             locale={locale}
             onAddToCart={handleAddToCart}
+            onAddBundleToCart={(bundleId) => void handleAddBundleToCart(bundleId)}
             onBack={() => setSelectedProductSlug(null)}
             onOpenCart={handleOpenCart}
             onSubmitReview={(input) => void handleSubmitProductReview(input)}
@@ -2873,6 +2949,22 @@ const styles = StyleSheet.create({
     color: palette.ink,
     fontSize: 15,
     fontWeight: "700",
+  },
+  accountMiniButton: {
+    backgroundColor: palette.accentMuted,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  accountMiniButtonText: {
+    color: palette.accent,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  accountSectionActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
   },
   accountSectionHeader: {
     alignItems: "center",

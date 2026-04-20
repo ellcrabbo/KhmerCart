@@ -1,5 +1,5 @@
 import type { BuyerOrderTrackingData } from "../api/client";
-import { formatDateTime, formatMoney } from "../lib/format";
+import { formatDateTime, formatMoney, parseMoneyInput } from "../lib/format";
 import type { BuyerLocale } from "../lib/i18n";
 import {
   getBuyerDictionary,
@@ -196,7 +196,11 @@ export function OrderTrackingScreen({
                 <TextInput
                   keyboardType="numeric"
                   onChangeText={setRequestedRefundText}
-                  placeholder="Enter minor units, for example 1500"
+                  placeholder={
+                    tracking.currency === "USD"
+                      ? "Enter amount, for example 25.00"
+                      : "Enter amount, for example 25000"
+                  }
                   placeholderTextColor={palette.muted}
                   style={styles.amountInput}
                   value={requestedRefundText}
@@ -209,7 +213,7 @@ export function OrderTrackingScreen({
                       buyerMessage: refundMessage,
                       reason: refundReason,
                       requestedRefundMinor: requestedRefundText.trim()
-                        ? Number(requestedRefundText)
+                        ? parseMoneyInput(tracking.currency, requestedRefundText)
                         : null
                     });
                     setRefundMessage("");

@@ -16,6 +16,25 @@ export function formatMoney(
   }).format(normalizedAmount);
 }
 
+export function parseMoneyInput(
+  currency: "KHR" | "USD",
+  value: string
+): number | null {
+  const normalized = value.trim().replace(/[^0-9.]/g, "");
+
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return currency === "USD" ? Math.round(parsed * 100) : Math.round(parsed);
+}
+
 export function formatDateTime(locale: BuyerLocale, value: string | null | undefined) {
   if (!value) {
     return null;
