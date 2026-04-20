@@ -13,7 +13,7 @@ import {
   StyleSheet,
   Text,
   View,
-  type ViewToken
+  type ViewToken,
 } from "react-native";
 
 type PostViewerScreenProps = {
@@ -33,7 +33,7 @@ type PostViewerScreenProps = {
       | "ADD_TO_CART"
       | "CHECKOUT_START"
       | "ORDER_CONVERSION",
-    videoPostId: string
+    videoPostId: string,
   ) => void;
   onOpenCart: () => void;
   onOpenProduct: (slug: string) => void;
@@ -56,12 +56,23 @@ type ViewerPageProps = {
 
 const screenHeight = Dimensions.get("window").height;
 
+function createSellerMonogram(slug: string) {
+  return slug
+    .split("-")
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 function ViewerPlayer({
   active,
+  fallbackImageUrl,
   posterUrl,
-  url
+  url,
 }: {
   active: boolean;
+  fallbackImageUrl: string | null;
   posterUrl: string | null;
   url: string | null;
 }) {
@@ -85,9 +96,18 @@ function ViewerPlayer({
 
   return (
     <View style={styles.mediaFrame}>
+      {fallbackImageUrl ? (
+        <Image source={{ uri: fallbackImageUrl }} style={styles.backgroundImage} />
+      ) : null}
       {posterUrl ? <Image source={{ uri: posterUrl }} style={styles.posterImage} /> : null}
-      {active && url ? <VideoView nativeControls={false} player={player} style={styles.video} /> : null}
-      <View style={styles.mediaShade} />
+      {fallbackImageUrl ? (
+        <Image source={{ uri: fallbackImageUrl }} style={styles.floatingImage} />
+      ) : null}
+      {active && url ? (
+        <VideoView nativeControls={false} player={player} style={styles.video} />
+      ) : null}
+      <View style={styles.mediaTopShade} />
+      <View style={styles.mediaBottomShade} />
     </View>
   );
 }
@@ -103,132 +123,206 @@ function ViewerPage({
   onBack,
   onOpenCart,
   onOpenProduct,
-  onSharePost
+  onSharePost,
 }: ViewerPageProps) {
   const dictionary = getBuyerDictionary(locale);
-  const [selectedVariantId, setSelectedVariantId] = useState<string>(item.product.leadVariant.id);
+  const [selectedVariantId, setSelectedVariantId] = useState<string>(
+    item.product.leadVariant.id,
+  );
   const campaignBadges = item.campaignBadges ?? [];
   const [quantity, setQuantity] = useState(1);
   const variants = useMemo(
-    () => ((item.product.variants ?? []).length > 0 ? item.product.variants : [item.product.leadVariant]),
-    [item.product.leadVariant, item.product.variants]
+    () =>
+      (item.product.variants ?? []).length > 0
+        ? item.product.variants
+        : [item.product.leadVariant],
+    [item.product.leadVariant, item.product.variants],
   );
   const selectedVariant =
     variants.find((variant) => variant.id === selectedVariantId) ?? variants[0];
+  const sellerMonogram = createSellerMonogram(item.seller.slug);
+  const featuredImageUrl = item.product.featuredImageUrl ?? item.video.posterUrl;
   const priceLabel = formatMoney(
     locale,
     selectedVariant.currency,
-    selectedVariant.priceMinor
+    selectedVariant.priceMinor,
   );
+
+  useEffect(() => {
+    setSelectedVariantId(item.product.leadVariant.id);
+    setQuantity(1);
+  }, [item.id, item.product.leadVariant.id]);
 
   return (
     <View style={styles.page}>
-      <ViewerPlayer active={active} posterUrl={item.video.posterUrl} url={item.video.url} />
+      <ViewerPlayer
+        active={active}
+        fallbackImageUrl={featuredImageUrl}
+        posterUrl={item.video.posterUrl}
+        url={item.video.url}
+      />
 
       <View style={styles.overlay}>
         <View style={styles.topRow}>
-          <Pressable onPress={onBack} style={styles.backButton}>
-            <Text style={styles.backButtonText}>{dictionary.backToFeed}</Text>
+          <Pressable onPress={onBack} style={styles.utilityButton}>
+            <Text style={styles.utilityButtonText}>{dictionary.backToFeed}</Text>
           </Pressable>
-          <Pressable onPress={onOpenCart} style={styles.cartButton}>
-            <Text style={styles.cartButtonText}>
-              {dictionary.openCart} {cartCount > 0 ? `(${cartCount})` : ""}
-            </Text>
-          </Pressable>
+          <View style={styles.topRightRow}>
+            <View style={styles.viewerModePill}>
+              <Text style={styles.viewerModePillText}>Shop Video</Text>
+            </View>
+            <Pressable onPress={onOpenCart} style={styles.utilityButton}>
+              <Text style={styles.utilityButtonText}>
+                {dictionary.openCart} {cartCount > 0 ? `(${cartCount})` : ""}
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
-        <View style={styles.sideRail}>
-          <Pressable onPress={onSharePost} style={styles.sideBubble}>
-            <Text style={styles.sideLabel}>Share</Text>
+        <View style={styles.rightRail}>
+          <View style={styles.railProfile}>
+            <View style={styles.railAvatar}>
+              <Text style={styles.railAvatarText}>{sellerMonogram}</Text>
+            </View>
+            <Text style={styles.railHandle}>@{item.seller.slug}</Text>
+          </View>
+          <Pressable onPress={onSharePost} style={styles.railBubble}>
+            <Text style={styles.railEmoji}>↗</Text>
+            <Text style={styles.railLabel}>Share</Text>
+          </Pressable>
+          <Pressable onPress={() => onOpenProduct(item.product.slug)} style={styles.railBubble}>
+            <Text style={styles.railEmoji}>▣</Text>
+            <Text style={styles.railLabel}>Shop</Text>
           </Pressable>
           {item.isPinned ? (
-            <View style={styles.sideBubble}>
-              <Text style={styles.sideLabel}>Pinned</Text>
+            <View style={styles.railBubble}>
+              <Text style={styles.railLabel}>Pinned</Text>
             </View>
           ) : null}
-          {campaignBadges.slice(0, 2).map((badge) => (
-            <View key={`${item.id}-${badge}`} style={styles.sideBubble}>
-              <Text style={styles.sideLabel}>{badge.replaceAll("_", " ")}</Text>
+          {campaignBadges.slice(0, 1).map((badge) => (
+            <View key={`${item.id}-${badge}`} style={styles.railBubble}>
+              <Text style={styles.railLabel}>{badge.replaceAll("_", " ")}</Text>
             </View>
           ))}
         </View>
 
         <View style={styles.bottomStack}>
-          <View style={styles.copyStack}>
-            <View style={styles.creatorPill}>
-              <Text style={styles.creatorHandle}>@{item.seller.slug}</Text>
-              <Text style={styles.creatorMeta}>{dictionary.featuredNow}</Text>
+          <View style={styles.liveMetaRow}>
+            <View style={styles.liveChip}>
+              <Text style={styles.liveChipText}>LIVE DROP</Text>
             </View>
+            <View style={styles.stockChip}>
+              <Text style={styles.stockChipText}>
+                {selectedVariant.availableQuantity} ready to ship
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.copyStack}>
+            <Text style={styles.creatorHandle}>@{item.seller.slug}</Text>
             <Text style={styles.caption}>{item.caption}</Text>
-            <Text style={styles.productName}>{item.product.name}</Text>
-            <Text style={styles.productMeta}>
-              {priceLabel} ·{" "}
-              {resolveAvailabilityFromQuantity(locale, selectedVariant.availableQuantity)}
-            </Text>
-          </View>
-
-          <View style={styles.variantRow}>
-            {variants.map((variant) => {
-              const selected = variant.id === selectedVariant.id;
-
-              return (
-                <Pressable
-                  key={variant.id}
-                  onPress={() => setSelectedVariantId(variant.id)}
-                  style={[styles.variantChip, selected ? styles.variantChipSelected : null]}
-                >
-                  <Text style={[styles.variantChipText, selected ? styles.variantChipTextSelected : null]}>
-                    {variant.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.quantityRow}>
-            <Pressable
-              onPress={() => setQuantity((value) => Math.max(1, value - 1))}
-              style={styles.quantityButton}
-            >
-              <Text style={styles.quantityButtonText}>-</Text>
-            </Pressable>
-            <Text style={styles.quantityValue}>{quantity}</Text>
-            <Pressable
-              onPress={() =>
-                setQuantity((value) =>
-                  Math.min(selectedVariant.availableQuantity || 1, value + 1)
-                )
-              }
-              style={styles.quantityButton}
-            >
-              <Text style={styles.quantityButtonText}>+</Text>
-            </Pressable>
           </View>
 
           <View style={styles.productPanel}>
-            <Pressable
-              onPress={() => onOpenProduct(item.product.slug)}
-              style={({ pressed }) => [
-                styles.productInfoButton,
-                pressed ? styles.buttonPressed : null
-              ]}
-            >
-              <Text style={styles.productPanelEyebrow}>Tap into detail</Text>
-              <Text numberOfLines={1} style={styles.productPanelTitle}>
-                {item.product.name}
-              </Text>
-            </Pressable>
-            <Pressable
-              disabled={!canAddToCart || isAddingToCart || selectedVariant.availableQuantity <= 0}
-              onPress={() => onAddToCart(selectedVariant.id, quantity)}
-              style={({ pressed }) => [
-                styles.shopButton,
-                pressed ? styles.buttonPressed : null,
-                !canAddToCart || selectedVariant.availableQuantity <= 0 ? styles.shopButtonDisabled : null
-              ]}
-            >
-              <Text style={styles.shopButtonText}>{dictionary.addToCart}</Text>
-            </Pressable>
+            <View style={styles.productPanelTop}>
+              {featuredImageUrl ? (
+                <Image source={{ uri: featuredImageUrl }} style={styles.productThumb} />
+              ) : (
+                <View style={styles.productThumbFallback}>
+                  <Text style={styles.productThumbFallbackText}>{sellerMonogram}</Text>
+                </View>
+              )}
+              <View style={styles.productPanelCopy}>
+                <Text style={styles.productPanelEyebrow}>{item.product.category}</Text>
+                <Text numberOfLines={1} style={styles.productPanelTitle}>
+                  {item.product.name}
+                </Text>
+                <Text style={styles.productPanelMeta}>
+                  {priceLabel} ·{" "}
+                  {resolveAvailabilityFromQuantity(
+                    locale,
+                    selectedVariant.availableQuantity,
+                  )}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.variantRow}>
+              {variants.map((variant) => {
+                const selected = variant.id === selectedVariant.id;
+
+                return (
+                  <Pressable
+                    key={variant.id}
+                    onPress={() => setSelectedVariantId(variant.id)}
+                    style={[
+                      styles.variantChip,
+                      selected ? styles.variantChipSelected : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.variantChipText,
+                        selected ? styles.variantChipTextSelected : null,
+                      ]}
+                    >
+                      {variant.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.productPanelBottom}>
+              <View style={styles.quantityCluster}>
+                <Pressable
+                  onPress={() => setQuantity((value) => Math.max(1, value - 1))}
+                  style={styles.quantityButton}
+                >
+                  <Text style={styles.quantityButtonText}>-</Text>
+                </Pressable>
+                <Text style={styles.quantityValue}>{quantity}</Text>
+                <Pressable
+                  onPress={() =>
+                    setQuantity((value) =>
+                      Math.min(selectedVariant.availableQuantity || 1, value + 1),
+                    )
+                  }
+                  style={styles.quantityButton}
+                >
+                  <Text style={styles.quantityButtonText}>+</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.ctaRow}>
+                <Pressable
+                  onPress={() => onOpenProduct(item.product.slug)}
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    pressed ? styles.buttonPressed : null,
+                  ]}
+                >
+                  <Text style={styles.secondaryButtonText}>View product</Text>
+                </Pressable>
+                <Pressable
+                  disabled={
+                    !canAddToCart ||
+                    isAddingToCart ||
+                    selectedVariant.availableQuantity <= 0
+                  }
+                  onPress={() => onAddToCart(selectedVariant.id, quantity)}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    pressed ? styles.buttonPressed : null,
+                    !canAddToCart || selectedVariant.availableQuantity <= 0
+                      ? styles.primaryButtonDisabled
+                      : null,
+                  ]}
+                >
+                  <Text style={styles.primaryButtonText}>{dictionary.addToCart}</Text>
+                </Pressable>
+              </View>
+            </View>
           </View>
         </View>
       </View>
@@ -248,13 +342,13 @@ export function PostViewerScreen({
   onMetric,
   onOpenCart,
   onOpenProduct,
-  onSharePost
+  onSharePost,
 }: PostViewerScreenProps) {
   const dictionary = getBuyerDictionary(locale);
   const listRef = useRef<FlatList<BuyerVideoFeedItem>>(null);
   const initialIndex = useMemo(
     () => Math.max(0, items.findIndex((item) => item.id === initialPostId)),
-    [initialPostId, items]
+    [initialPostId, items],
   );
   const [activeIndex, setActiveIndex] = useState(initialIndex);
 
@@ -268,14 +362,14 @@ export function PostViewerScreen({
     ({ viewableItems }: { viewableItems: ViewToken<BuyerVideoFeedItem>[] }) => {
       const current = viewableItems.find((entry) => entry.isViewable)?.index ?? 0;
       setActiveIndex(current);
-    }
+    },
   ).current;
 
   if (!items.length) {
     return (
       <View style={styles.stateScreen}>
-        <Pressable onPress={onBack} style={styles.backButton}>
-          <Text style={styles.backButtonText}>{dictionary.backToFeed}</Text>
+        <Pressable onPress={onBack} style={styles.utilityButton}>
+          <Text style={styles.utilityButtonText}>{dictionary.backToFeed}</Text>
         </Pressable>
         <Text style={styles.stateText}>{dictionary.videoFeedEmpty}</Text>
       </View>
@@ -289,7 +383,7 @@ export function PostViewerScreen({
       getItemLayout={(_, index) => ({
         index,
         length: screenHeight,
-        offset: screenHeight * index
+        offset: screenHeight * index,
       })}
       initialNumToRender={1}
       initialScrollIndex={initialIndex}
@@ -326,124 +420,173 @@ export function PostViewerScreen({
       snapToAlignment="start"
       snapToInterval={screenHeight}
       viewabilityConfig={{
-        itemVisiblePercentThreshold: 70
+        itemVisiblePercentThreshold: 70,
       }}
     />
   );
 }
 
 const styles = StyleSheet.create({
-  backButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(255, 250, 242, 0.14)",
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  backButtonText: {
-    color: palette.card,
-    fontSize: 13,
-    fontWeight: "700"
+  backgroundImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.26,
+    resizeMode: "cover",
   },
   bottomStack: {
-    gap: 14
+    gap: 12,
+    paddingBottom: 26,
   },
   buttonPressed: {
-    opacity: 0.9
+    opacity: 0.9,
   },
   caption: {
     color: palette.card,
-    fontSize: 18,
-    lineHeight: 24
-  },
-  cartButton: {
-    backgroundColor: "rgba(255, 250, 242, 0.14)",
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  cartButtonText: {
-    color: palette.card,
-    fontSize: 13,
-    fontWeight: "700"
+    fontSize: 22,
+    fontWeight: "700",
+    lineHeight: 28,
   },
   copyStack: {
-    gap: 6
+    gap: 4,
+    paddingRight: 92,
   },
   creatorHandle: {
-    color: palette.card,
-    fontSize: 13,
-    fontWeight: "800"
+    color: "#d8f1e8",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
-  creatorMeta: {
-    color: "#d7f0e7",
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase"
+  ctaRow: {
+    flex: 1,
+    flexDirection: "row",
+    gap: 10,
   },
-  creatorPill: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(8, 7, 5, 0.42)",
+  floatingImage: {
+    bottom: 182,
+    height: screenHeight * 0.38,
+    opacity: 0.16,
+    position: "absolute",
+    right: -58,
+    transform: [{ rotate: "-10deg" }],
+    width: screenHeight * 0.24,
+  },
+  liveChip: {
+    backgroundColor: "#eb5c35",
     borderRadius: 999,
-    gap: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 10
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  liveChipText: {
+    color: palette.card,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  liveMetaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  mediaBottomShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(5, 10, 9, 0.5)",
   },
   mediaFrame: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: palette.ink
+    backgroundColor: "#0f2b24",
   },
-  mediaShade: {
+  mediaTopShade: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(6, 6, 8, 0.28)"
+    backgroundColor: "rgba(6, 8, 9, 0.22)",
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "space-between",
-    paddingBottom: 40,
-    paddingHorizontal: 18,
-    paddingTop: 14
+    paddingBottom: 14,
+    paddingHorizontal: 16,
+    paddingTop: 14,
   },
   page: {
     backgroundColor: palette.ink,
-    height: screenHeight
+    height: screenHeight,
   },
   posterImage: {
     ...StyleSheet.absoluteFillObject,
-    resizeMode: "cover"
+    opacity: 0.2,
+    resizeMode: "cover",
   },
-  productInfoButton: {
+  primaryButton: {
+    alignItems: "center",
+    backgroundColor: palette.card,
+    borderRadius: 999,
     flex: 1,
-    gap: 2
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  productMeta: {
-    color: "#f0e7da",
-    fontSize: 13
+  primaryButtonDisabled: {
+    opacity: 0.5,
   },
-  productName: {
-    color: palette.card,
-    fontSize: 22,
-    fontWeight: "800"
+  primaryButtonText: {
+    color: palette.ink,
+    fontSize: 13,
+    fontWeight: "800",
   },
   productPanel: {
+    backgroundColor: "rgba(8, 7, 5, 0.66)",
+    borderColor: "rgba(255, 250, 242, 0.12)",
+    borderRadius: 28,
+    borderWidth: 1,
+    gap: 14,
+    padding: 14,
+  },
+  productPanelBottom: {
     alignItems: "center",
-    backgroundColor: "rgba(8, 7, 5, 0.62)",
-    borderRadius: 24,
     flexDirection: "row",
     gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14
+  },
+  productPanelCopy: {
+    flex: 1,
+    gap: 2,
   },
   productPanelEyebrow: {
-    color: "#d9d1c4",
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase"
+    color: "#d7ede3",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  productPanelMeta: {
+    color: "#efe4d5",
+    fontSize: 13,
   },
   productPanelTitle: {
     color: palette.card,
-    fontSize: 15,
-    fontWeight: "700"
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  productPanelTop: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+  },
+  productThumb: {
+    backgroundColor: "#f7f2ea",
+    borderRadius: 18,
+    height: 80,
+    width: 80,
+  },
+  productThumbFallback: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 250, 242, 0.12)",
+    borderRadius: 18,
+    height: 80,
+    justifyContent: "center",
+    width: 80,
+  },
+  productThumbFallbackText: {
+    color: palette.card,
+    fontSize: 24,
+    fontWeight: "800",
   },
   quantityButton: {
     alignItems: "center",
@@ -451,103 +594,170 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     height: 34,
     justifyContent: "center",
-    width: 34
+    width: 34,
   },
   quantityButtonText: {
     color: palette.card,
     fontSize: 18,
-    fontWeight: "700"
+    fontWeight: "700",
   },
-  quantityRow: {
+  quantityCluster: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 14
+    gap: 12,
   },
   quantityValue: {
     color: palette.card,
     fontSize: 16,
     fontWeight: "700",
-    minWidth: 20,
-    textAlign: "center"
+    minWidth: 18,
+    textAlign: "center",
   },
-  screen: {
-    flex: 1
-  },
-  shopButton: {
-    backgroundColor: palette.card,
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 14
-  },
-  shopButtonDisabled: {
-    opacity: 0.5
-  },
-  shopButtonText: {
-    color: palette.ink,
-    fontSize: 14,
-    fontWeight: "800"
-  },
-  sideBubble: {
+  railAvatar: {
     alignItems: "center",
-    backgroundColor: "rgba(8, 7, 5, 0.48)",
-    borderColor: "rgba(255, 250, 242, 0.16)",
+    backgroundColor: "rgba(255, 250, 242, 0.14)",
+    borderRadius: 999,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  railAvatarText: {
+    color: palette.card,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  railBubble: {
+    alignItems: "center",
+    backgroundColor: "rgba(8, 7, 5, 0.58)",
+    borderColor: "rgba(255, 250, 242, 0.14)",
     borderRadius: 999,
     borderWidth: 1,
-    gap: 4,
+    gap: 3,
     minWidth: 72,
     paddingHorizontal: 10,
-    paddingVertical: 12
+    paddingVertical: 11,
   },
-  sideLabel: {
+  railEmoji: {
+    color: palette.card,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  railHandle: {
+    color: palette.card,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  railLabel: {
     color: palette.card,
     fontSize: 10,
     fontWeight: "700",
-    textTransform: "uppercase"
+    textAlign: "center",
+    textTransform: "uppercase",
   },
-  sideRail: {
-    alignItems: "flex-end",
-    gap: 10
+  railProfile: {
+    alignItems: "center",
+    gap: 6,
+  },
+  rightRail: {
+    alignItems: "center",
+    gap: 10,
+    position: "absolute",
+    right: 16,
+    top: 116,
+  },
+  secondaryButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 250, 242, 0.12)",
+    borderRadius: 999,
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  secondaryButtonText: {
+    color: palette.card,
+    fontSize: 13,
+    fontWeight: "800",
   },
   stateScreen: {
     alignItems: "center",
     flex: 1,
     gap: 16,
     justifyContent: "center",
-    padding: 24
+    padding: 24,
   },
   stateText: {
     color: palette.card,
     fontSize: 15,
-    textAlign: "center"
+    textAlign: "center",
+  },
+  stockChip: {
+    backgroundColor: "rgba(255, 250, 242, 0.12)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  stockChipText: {
+    color: "#d7ede3",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  topRightRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
   },
   topRow: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "space-between"
+    justifyContent: "space-between",
   },
-  variantChip: {
+  utilityButton: {
     backgroundColor: "rgba(255, 250, 242, 0.14)",
     borderRadius: 999,
     paddingHorizontal: 14,
-    paddingVertical: 10
+    paddingVertical: 10,
+  },
+  utilityButtonText: {
+    color: palette.card,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  variantChip: {
+    backgroundColor: "rgba(255, 250, 242, 0.12)",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   variantChipSelected: {
-    backgroundColor: palette.card
+    backgroundColor: palette.card,
   },
   variantChipText: {
     color: palette.card,
     fontSize: 12,
-    fontWeight: "700"
+    fontWeight: "700",
   },
   variantChipTextSelected: {
-    color: palette.ink
+    color: palette.ink,
   },
   variantRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10
+    gap: 8,
   },
   video: {
-    ...StyleSheet.absoluteFillObject
-  }
+    ...StyleSheet.absoluteFillObject,
+  },
+  viewerModePill: {
+    backgroundColor: "rgba(8, 7, 5, 0.46)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  viewerModePillText: {
+    color: "#dbf3ea",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
 });

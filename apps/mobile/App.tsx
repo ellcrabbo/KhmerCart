@@ -244,6 +244,22 @@ function createIdempotencyKey() {
   return `mobile-${randomPart}`;
 }
 
+function getBuyerTabGlyph(tab: ShellTab) {
+  if (tab === "home") {
+    return "▶";
+  }
+
+  if (tab === "cart") {
+    return "◫";
+  }
+
+  if (tab === "orders") {
+    return "◎";
+  }
+
+  return "◌";
+}
+
 export default function App() {
   const [locale, setLocale] = useState<BuyerLocale>(readDefaultBuyerLocale());
   const [activeTab, setActiveTab] = useState<ShellTab>("home");
@@ -2740,6 +2756,14 @@ export default function App() {
       >
         <Text
           style={[
+            styles.tabButtonGlyph,
+            isSelected ? styles.tabButtonGlyphSelected : null,
+          ]}
+        >
+          {getBuyerTabGlyph(tab)}
+        </Text>
+        <Text
+          style={[
             styles.tabButtonText,
             isSelected ? styles.tabButtonTextSelected : null,
           ]}
@@ -3179,7 +3203,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   safeArea: {
-    backgroundColor: palette.background,
+    backgroundColor: "#050709",
     flex: 1,
   },
   shell: {
@@ -3280,8 +3304,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   tabBar: {
-    backgroundColor: palette.card,
-    borderTopColor: palette.border,
+    backgroundColor: "#0a0d0f",
+    borderTopColor: "rgba(255, 255, 255, 0.08)",
     borderTopWidth: 1,
     flexDirection: "row",
     gap: 8,
@@ -3293,20 +3317,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 999,
     flex: 1,
+    gap: 4,
     justifyContent: "center",
     minHeight: 46,
     paddingHorizontal: 8,
   },
   tabButtonSelected: {
-    backgroundColor: palette.accent,
+    backgroundColor: "#163d35",
+  },
+  tabButtonGlyph: {
+    color: "rgba(255,255,255,0.58)",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  tabButtonGlyphSelected: {
+    color: "#e8f4ef",
   },
   tabButtonText: {
-    color: palette.muted,
+    color: "rgba(255,255,255,0.58)",
     fontSize: 12,
     fontWeight: "700",
   },
   tabButtonTextSelected: {
-    color: palette.card,
+    color: "#e8f4ef",
   },
   workspaceBody: {
     color: palette.muted,

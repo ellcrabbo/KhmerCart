@@ -538,15 +538,15 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignSelf: "flex-start",
-    backgroundColor: palette.card,
-    borderColor: palette.border,
+    backgroundColor: "rgba(255, 250, 242, 0.16)",
+    borderColor: "rgba(255, 250, 242, 0.12)",
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 10
   },
   backButtonText: {
-    color: palette.ink,
+    color: palette.card,
     fontSize: 14,
     fontWeight: "700"
   },
@@ -592,30 +592,31 @@ const styles = StyleSheet.create({
   },
   cartButton: {
     alignSelf: "flex-start",
-    backgroundColor: palette.accentMuted,
+    backgroundColor: "rgba(255, 250, 242, 0.16)",
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 10
   },
   cartButtonText: {
-    color: palette.accent,
+    color: palette.card,
     fontSize: 14,
     fontWeight: "700"
   },
   category: {
-    color: palette.sun,
+    color: "#dcf6eb",
     fontSize: 12,
     fontWeight: "700",
     textTransform: "uppercase"
   },
   content: {
+    backgroundColor: palette.background,
     gap: 16,
     paddingBottom: 48,
     paddingHorizontal: 20,
     paddingTop: 18
   },
   description: {
-    color: palette.muted,
+    color: "#d7e7de",
     fontSize: 15,
     lineHeight: 23
   },
@@ -642,12 +643,14 @@ const styles = StyleSheet.create({
     lineHeight: 22
   },
   headerRow: {
+    backgroundColor: "#0f2c26",
+    borderRadius: 28,
     flexDirection: "row",
     justifyContent: "space-between"
   },
   heroCard: {
-    backgroundColor: palette.card,
-    borderColor: palette.border,
+    backgroundColor: "#0f2c26",
+    borderColor: "rgba(255, 250, 242, 0.12)",
     borderRadius: 32,
     borderWidth: 1,
     overflow: "hidden"
@@ -657,23 +660,23 @@ const styles = StyleSheet.create({
     padding: 20
   },
   heroImage: {
-    backgroundColor: palette.sunMuted,
-    height: 320,
+    backgroundColor: "#f3ecdf",
+    height: 360,
     width: "100%"
   },
   heroPlaceholder: {
     alignItems: "center",
-    backgroundColor: palette.sunMuted,
-    height: 320,
+    backgroundColor: "#153932",
+    height: 360,
     justifyContent: "center"
   },
   heroPlaceholderText: {
-    color: palette.sun,
-    fontSize: 22,
+    color: palette.card,
+    fontSize: 28,
     fontWeight: "700"
   },
   metaLine: {
-    color: palette.muted,
+    color: "#bdd5cb",
     fontSize: 13
   },
   primaryButton: {
@@ -718,13 +721,13 @@ const styles = StyleSheet.create({
     gap: 10
   },
   quickActionButton: {
-    backgroundColor: palette.sunMuted,
+    backgroundColor: "rgba(255, 250, 242, 0.12)",
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 10
   },
   quickActionButtonText: {
-    color: palette.sun,
+    color: palette.card,
     fontSize: 13,
     fontWeight: "700"
   },
@@ -824,8 +827,8 @@ const styles = StyleSheet.create({
     textTransform: "uppercase"
   },
   statCard: {
-    backgroundColor: "#fffefb",
-    borderColor: palette.border,
+    backgroundColor: "rgba(255, 250, 242, 0.08)",
+    borderColor: "rgba(255, 250, 242, 0.12)",
     borderRadius: 20,
     borderWidth: 1,
     flex: 1,
@@ -833,7 +836,7 @@ const styles = StyleSheet.create({
     padding: 16
   },
   statLabel: {
-    color: palette.muted,
+    color: "#bdd5cb",
     fontSize: 11,
     fontWeight: "700",
     textTransform: "uppercase"
@@ -843,7 +846,7 @@ const styles = StyleSheet.create({
     gap: 12
   },
   statValue: {
-    color: palette.ink,
+    color: palette.card,
     fontSize: 18,
     fontWeight: "700"
   },
@@ -861,7 +864,7 @@ const styles = StyleSheet.create({
     textAlign: "center"
   },
   title: {
-    color: palette.ink,
+    color: palette.card,
     fontSize: 32,
     fontWeight: "700",
     lineHeight: 38
