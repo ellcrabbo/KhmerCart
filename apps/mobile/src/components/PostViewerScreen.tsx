@@ -87,16 +87,9 @@ function ViewerPlayer({
   });
 
   useEffect(() => {
-    if (!active || !url) {
-      player.pause();
-      return;
+    if (active && url) {
+      player.play();
     }
-
-    player.play();
-
-    return () => {
-      player.pause();
-    };
   }, [active, player, url]);
 
   return (
