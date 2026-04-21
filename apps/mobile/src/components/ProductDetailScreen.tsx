@@ -16,6 +16,7 @@ import {
   getBuyerDictionary,
   resolveAvailabilityFromQuantity
 } from "../lib/i18n";
+import { pickBestRenderableMediaUrl } from "../lib/media";
 import { palette } from "../lib/theme";
 
 type ProductDetailScreenProps = {
@@ -110,11 +111,17 @@ export function ProductDetailScreen({
     );
   }
 
+  const variants = product.variants ?? [];
+  const bundles = product.bundles ?? [];
+  const productImages = product.images ?? [];
   const selectedVariant =
-    product.variants.find((variant) => variant.id === selectedVariantId) ??
-    product.variants.find((variant) => variant.isDefault) ??
-    product.variants[0];
-  const heroImage = product.images[0]?.url ?? product.featuredImage?.url ?? null;
+    variants.find((variant) => variant.id === selectedVariantId) ??
+    variants.find((variant) => variant.isDefault) ??
+    variants[0];
+  const heroImage = pickBestRenderableMediaUrl(
+    productImages[0]?.url,
+    product.featuredImage?.url,
+  );
   const publishedAt = formatDateTime(locale, product.publishedAt);
 
   return (
@@ -253,7 +260,7 @@ export function ProductDetailScreen({
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>{dictionary.variantLabel}</Text>
         <View style={styles.variantList}>
-          {product.variants.map((variant) => {
+          {variants.map((variant) => {
             const isSelected = variant.id === selectedVariant?.id;
 
             return (
@@ -299,14 +306,14 @@ export function ProductDetailScreen({
         </View>
       </View>
 
-      {product.bundles.length > 0 ? (
+      {bundles.length > 0 ? (
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Bundle offers</Text>
           {bundleActionError ? (
             <Text style={styles.bundleError}>{bundleActionError}</Text>
           ) : null}
           <View style={styles.bundleList}>
-            {product.bundles.map((bundle) => (
+            {bundles.map((bundle) => (
               <View key={bundle.id} style={styles.bundleCard}>
                 <Text style={styles.bundleTitle}>{bundle.name}</Text>
                 <Text style={styles.disclosureValue}>

@@ -111,6 +111,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  LogBox,
   Pressable,
   Share,
   ScrollView,
@@ -119,6 +120,11 @@ import {
   View,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+
+LogBox.ignoreLogs([
+  "The app is running using the Legacy Architecture",
+]);
+LogBox.ignoreAllLogs(__DEV__);
 
 type FeedState = BuyerVideoFeedResult;
 type ShellTab = "home" | "cart" | "orders" | "account";

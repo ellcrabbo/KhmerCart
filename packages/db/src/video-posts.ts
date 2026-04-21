@@ -452,6 +452,10 @@ function looksLikeVideoAsset(key: string): boolean {
   return /\.(mp4|m4v|mov|webm)$/i.test(key);
 }
 
+function looksLikeAbsoluteUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
 function createFallbackPosterUrl(seed: string): string {
   return `https://placehold.co/720x1280/125b50/f4f0e8/png?text=${encodeURIComponent(seed)}`;
 }
@@ -469,6 +473,10 @@ function resolveFallbackProductImageUrl(record: PublicVideoPostRecord): string {
 async function resolveSignedDownloadUrl(key: string | null | undefined): Promise<string | null> {
   if (!key) {
     return null;
+  }
+
+  if (looksLikeAbsoluteUrl(key)) {
+    return key;
   }
 
   try {

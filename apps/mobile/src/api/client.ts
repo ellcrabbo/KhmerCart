@@ -1,3 +1,5 @@
+import { demoVideoFeed, readDemoProduct } from "./demoData"
+
 export type ApiErrorResponse = {
   error: string
   message: string
@@ -843,6 +845,14 @@ async function requestJson<T>(path: string, options: JsonRequestOptions = {}) {
   return requestJsonFromBase<T>(getApiBaseUrl(), path, options)
 }
 
+function isNetworkTransportError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  return /Network request failed|Failed to fetch|Load failed/i.test(error.message)
+}
+
 async function requestSellerJson<T>(path: string, options: JsonRequestOptions = {}) {
   return requestJsonFromBase<T>(getSellerBaseUrl(), path, options)
 }
@@ -897,7 +907,19 @@ export async function listProducts(input?: {
 }
 
 export async function readProduct(slug: string) {
-  return requestJson<BuyerProductDetail>(`/api/products/${encodeURIComponent(slug)}`)
+  try {
+    return await requestJson<BuyerProductDetail>(`/api/products/${encodeURIComponent(slug)}`)
+  } catch (error) {
+    if (isNetworkTransportError(error)) {
+      const demoProduct = readDemoProduct(slug)
+
+      if (demoProduct) {
+        return demoProduct
+      }
+    }
+
+    throw error
+  }
 }
 
 export async function listVideoFeed(input?: {
@@ -916,7 +938,17 @@ export async function listVideoFeed(input?: {
 
   const suffix = searchParams.toString()
 
-  return requestJson<BuyerVideoFeedResult>(`/api/video-feed${suffix ? `?${suffix}` : ""}`)
+  try {
+    return await requestJson<BuyerVideoFeedResult>(
+      `/api/video-feed${suffix ? `?${suffix}` : ""}`
+    )
+  } catch (error) {
+    if (isNetworkTransportError(error) && !input?.cursor) {
+      return demoVideoFeed
+    }
+
+    throw error
+  }
 }
 
 export async function readCart(token: string) {
@@ -1136,7 +1168,7 @@ export async function createProductReview(
 }
 
 export async function toggleSavedProductState(token: string, productId: string) {
-  return requestJson<{ saved: boolean }>(`/api/products/${encodeURIComponent(productId)}/save`, {
+  return requestJson<{ saved: boolean }>(`/api/product-saves/${encodeURIComponent(productId)}`, {
     method: "POST",
     token
   })

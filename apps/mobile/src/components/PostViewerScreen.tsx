@@ -2,6 +2,7 @@ import type { BuyerVideoFeedItem } from "../api/client";
 import { formatMoney } from "../lib/format";
 import type { BuyerLocale } from "../lib/i18n";
 import { getBuyerDictionary, resolveAvailabilityFromQuantity } from "../lib/i18n";
+import { pickBestRenderableMediaUrl, sanitizeRemoteMediaUrl } from "../lib/media";
 import { palette } from "../lib/theme";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -63,6 +64,10 @@ function createSellerMonogram(slug: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function createCompactProductName(name: string) {
+  return name.split(" / ")[0]?.trim() || name;
 }
 
 function ViewerPlayer({
@@ -141,7 +146,11 @@ function ViewerPage({
   const selectedVariant =
     variants.find((variant) => variant.id === selectedVariantId) ?? variants[0];
   const sellerMonogram = createSellerMonogram(item.seller.slug);
-  const featuredImageUrl = item.product.featuredImageUrl ?? item.video.posterUrl;
+  const productName = createCompactProductName(item.product.name);
+  const featuredImageUrl = pickBestRenderableMediaUrl(
+    item.product.featuredImageUrl,
+    item.video.posterUrl,
+  );
   const priceLabel = formatMoney(
     locale,
     selectedVariant.currency,
@@ -158,8 +167,8 @@ function ViewerPage({
       <ViewerPlayer
         active={active}
         fallbackImageUrl={featuredImageUrl}
-        posterUrl={item.video.posterUrl}
-        url={item.video.url}
+        posterUrl={sanitizeRemoteMediaUrl(item.video.posterUrl)}
+        url={sanitizeRemoteMediaUrl(item.video.url)}
       />
 
       <View style={styles.overlay}>
@@ -235,7 +244,7 @@ function ViewerPage({
               <View style={styles.productPanelCopy}>
                 <Text style={styles.productPanelEyebrow}>{item.product.category}</Text>
                 <Text numberOfLines={1} style={styles.productPanelTitle}>
-                  {item.product.name}
+                  {productName}
                 </Text>
                 <Text style={styles.productPanelMeta}>
                   {priceLabel} ·{" "}

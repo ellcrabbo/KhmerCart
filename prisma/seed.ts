@@ -11,6 +11,8 @@ import {
   PaymentStatus,
   ProductModerationStatus,
   ProductStatus,
+  VideoPostModerationStatus,
+  VideoPostStatus,
   ShipmentEventSource,
   ShipmentStatus,
   UserRole
@@ -139,9 +141,129 @@ function ensurePublishedAt(reference: Date, daysAgo: number | null | undefined) 
 
 function createImageUrls(slug: string) {
   return [
-    `https://images.khmercart.local/seed/${slug}-1.jpg`,
-    `https://images.khmercart.local/seed/${slug}-2.jpg`
+    `https://placehold.co/1200x1600/f3ecdf/10342d/png?text=${encodeURIComponent(slug.replaceAll("-", " "))}`,
+    `https://placehold.co/1200x1600/e8dcc8/10342d/png?text=${encodeURIComponent(`${slug} detail`)}`
   ];
+}
+
+type SeedVideoPostDefinition = {
+  caption: string;
+  featuredScore?: number;
+  isPinned?: boolean;
+  manualBoost?: number;
+  posterUrl: string;
+  productSlug: string;
+  sellerSlug: string;
+  videoUrl: string;
+};
+
+function createSeedVideoPosts(): SeedVideoPostDefinition[] {
+  return [
+    {
+      caption: "Mekong Crafts launch drop",
+      featuredScore: 18,
+      isPinned: true,
+      manualBoost: 10,
+      posterUrl:
+        "https://placehold.co/720x1280/125b50/f4f0e8/png?text=Mekong+Crafts+drop",
+      productSlug: "krama-scarf",
+      sellerSlug: "mekong-crafts",
+      videoUrl:
+        "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+    },
+    {
+      caption: "Small-batch pantry restock",
+      featuredScore: 12,
+      manualBoost: 6,
+      posterUrl:
+        "https://placehold.co/720x1280/5b3a12/f7efe2/png?text=Tonle+Gourmet+drop",
+      productSlug: "prahok-spice-kit",
+      sellerSlug: "tonle-gourmet",
+      videoUrl:
+        "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    },
+  ];
+}
+
+async function reseedVideoPosts(now: Date) {
+  const seedDefinitions = createSeedVideoPosts();
+  const products = await prisma.product.findMany({
+    select: {
+      id: true,
+      sellerId: true,
+      slug: true,
+      seller: {
+        select: {
+          slug: true,
+        },
+      },
+    },
+    where: {
+      slug: {
+        in: seedDefinitions.map((definition) => definition.productSlug),
+      },
+    },
+  });
+
+  const productBySellerAndSlug = new Map(
+    products.map((product) => [`${product.seller.slug}:${product.slug}`, product]),
+  );
+
+  await prisma.videoPost.deleteMany({
+    where: {
+      OR: [
+        {
+          caption: {
+            in: seedDefinitions.map((definition) => definition.caption),
+          },
+        },
+        {
+          videoKey: {
+            in: seedDefinitions.map((definition) => definition.videoUrl),
+          },
+        },
+      ],
+    },
+  });
+
+  for (const [index, definition] of seedDefinitions.entries()) {
+    const product = productBySellerAndSlug.get(
+      `${definition.sellerSlug}:${definition.productSlug}`,
+    );
+
+    if (!product) {
+      continue;
+    }
+
+    const publishedAt = shiftDate(now, seedDefinitions.length - index, 1);
+    const post = await prisma.videoPost.create({
+      data: {
+        aspectRatio: 9 / 16,
+        caption: definition.caption,
+        featuredScore: definition.featuredScore ?? 0,
+        isPinned: definition.isPinned ?? false,
+        manualBoost: definition.manualBoost ?? 0,
+        moderationStatus: VideoPostModerationStatus.APPROVED,
+        posterKey: definition.posterUrl,
+        processedAt: publishedAt,
+        processingStartedAt: shiftDate(publishedAt, 0, 1),
+        productId: product.id,
+        publishedAt,
+        sellerId: product.sellerId,
+        status: VideoPostStatus.PUBLISHED,
+        videoKey: definition.videoUrl,
+      },
+    });
+
+    await prisma.videoPostAttachment.create({
+      data: {
+        isPrimary: true,
+        position: 0,
+        productId: product.id,
+        videoPostId: post.id,
+      },
+    });
+  }
 }
 
 function getOrderTimeline(state: OrderState): OrderState[] {
@@ -2063,6 +2185,8 @@ async function main() {
       status: product.moderationStatus
     }))
   });
+
+  await reseedVideoPosts(now);
 
   const productCount = await prisma.product.count({
     where: {

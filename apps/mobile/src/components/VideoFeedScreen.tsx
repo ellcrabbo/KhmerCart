@@ -2,6 +2,7 @@ import type { BuyerVideoFeedItem } from "../api/client";
 import { formatMoney } from "../lib/format";
 import type { BuyerLocale } from "../lib/i18n";
 import { getBuyerDictionary, resolveAvailabilityFromState } from "../lib/i18n";
+import { pickBestRenderableMediaUrl } from "../lib/media";
 import { palette } from "../lib/theme";
 import {
   ActivityIndicator,
@@ -46,6 +47,10 @@ function createSellerMonogram(slug: string) {
     .toUpperCase();
 }
 
+function createCompactProductName(name: string) {
+  return name.split(" / ")[0]?.trim() || name;
+}
+
 function VideoFeedCard({
   item,
   locale,
@@ -56,7 +61,15 @@ function VideoFeedCard({
   const dictionary = getBuyerDictionary(locale);
   const campaignBadges = item.campaignBadges ?? [];
   const sellerMonogram = createSellerMonogram(item.seller.slug);
-  const featuredImageUrl = item.product.featuredImageUrl ?? item.video.posterUrl;
+  const productName = createCompactProductName(item.product.name);
+  const posterUrl = pickBestRenderableMediaUrl(
+    item.video.posterUrl,
+    item.product.featuredImageUrl,
+  );
+  const featuredImageUrl = pickBestRenderableMediaUrl(
+    item.product.featuredImageUrl,
+    item.video.posterUrl,
+  );
   const priceLabel = formatMoney(
     locale,
     item.product.pricing.currency,
@@ -70,6 +83,9 @@ function VideoFeedCard({
   return (
     <Pressable onPress={onOpenPost} style={styles.card}>
       <View style={styles.frame}>
+        {posterUrl ? (
+          <Image source={{ uri: posterUrl }} style={styles.backgroundImage} />
+        ) : null}
         <View style={styles.backgroundScrim} />
         <View style={styles.topFade} />
         <View style={styles.bottomFade} />
@@ -104,22 +120,8 @@ function VideoFeedCard({
         </View>
 
         <View style={styles.mediaCenter}>
-          <View style={styles.centerAura} />
-          <View style={styles.centerThumb}>
-            {featuredImageUrl ? (
-              <Image source={{ uri: featuredImageUrl }} style={styles.centerThumbImage} />
-            ) : (
-              <View style={styles.centerThumbFallback}>
-                <Text style={styles.centerThumbFallbackText}>{sellerMonogram}</Text>
-              </View>
-            )}
-            <View style={styles.centerThumbOverlay}>
-              <View style={styles.centerThumbOverlayBadge}>
-                <Text style={styles.centerThumbOverlayBadgeText}>Featured</Text>
-              </View>
-              <Text style={styles.centerThumbOverlayMono}>{sellerMonogram}</Text>
-              <Text style={styles.centerThumbOverlayMeta}>{item.product.category}</Text>
-            </View>
+          <View style={styles.playHalo}>
+            <Text style={styles.playIcon}>▶</Text>
           </View>
           <Text style={styles.centerEyebrow}>Tap to watch</Text>
         </View>
@@ -142,7 +144,7 @@ function VideoFeedCard({
               {item.caption}
             </Text>
             <Text numberOfLines={2} style={styles.productName}>
-              {item.product.name}
+              {productName}
             </Text>
             <Text style={styles.productMeta}>
               {priceLabel} · {availabilityLabel}
@@ -175,7 +177,7 @@ function VideoFeedCard({
             <View style={styles.buyStripCopy}>
               <Text style={styles.buyStripEyebrow}>{item.product.category}</Text>
               <Text numberOfLines={1} style={styles.buyStripTitle}>
-                {item.product.name}
+                {productName}
               </Text>
             </View>
             <Pressable
@@ -278,11 +280,12 @@ const styles = StyleSheet.create({
   },
   backgroundImage: {
     ...StyleSheet.absoluteFillObject,
+    opacity: 0.82,
     resizeMode: "cover",
   },
   backgroundScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(5, 8, 9, 0.34)",
+    backgroundColor: "rgba(3, 5, 6, 0.26)",
   },
   badgeChip: {
     backgroundColor: "rgba(255, 255, 255, 0.12)",
@@ -303,11 +306,11 @@ const styles = StyleSheet.create({
   },
   bottomFade: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(4, 5, 7, 0.38)",
+    backgroundColor: "rgba(4, 5, 7, 0.1)",
   },
   bottomPanel: {
-    bottom: 18,
-    gap: 12,
+    bottom: 88,
+    gap: 8,
     left: 16,
     position: "absolute",
     right: 92,
@@ -322,8 +325,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 12,
-    padding: 10,
+    gap: 10,
+    padding: 8,
   },
   buyStripCopy: {
     flex: 1,
@@ -377,7 +380,7 @@ const styles = StyleSheet.create({
   },
   centerEyebrow: {
     color: "#dce7e2",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
     letterSpacing: 0.4,
     textTransform: "uppercase",
@@ -392,15 +395,8 @@ const styles = StyleSheet.create({
     width: 164,
   },
   centerThumbFallback: {
-    alignItems: "center",
     backgroundColor: "#173932",
     flex: 1,
-    justifyContent: "center",
-  },
-  centerThumbFallbackText: {
-    color: palette.card,
-    fontSize: 34,
-    fontWeight: "800",
   },
   centerThumbImage: {
     height: "100%",
@@ -492,16 +488,27 @@ const styles = StyleSheet.create({
   },
   mediaCenter: {
     alignItems: "center",
-    gap: 12,
+    gap: 8,
     left: 0,
     position: "absolute",
     right: 0,
-    top: 156,
+    top: 250,
   },
-  posterImage: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.22,
-    resizeMode: "cover",
+  playHalo: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    borderColor: "rgba(255, 255, 255, 0.26)",
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 70,
+    justifyContent: "center",
+    width: 70,
+  },
+  playIcon: {
+    color: palette.card,
+    fontSize: 30,
+    fontWeight: "900",
+    marginLeft: 4,
   },
   productMeta: {
     color: "#dce7e2",
@@ -509,9 +516,9 @@ const styles = StyleSheet.create({
   },
   productName: {
     color: palette.card,
-    fontSize: 30,
+    fontSize: 20,
     fontWeight: "800",
-    lineHeight: 34,
+    lineHeight: 23,
   },
   railBubble: {
     alignItems: "center",
