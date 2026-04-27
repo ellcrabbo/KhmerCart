@@ -29,6 +29,7 @@
     "mobile:submit:ios": "cd apps/mobile && pnpm dlx eas-cli@16.20.0 submit --platform ios --profile production",
     "payments:reconcile": "./scripts/with-local-env.sh tsx scripts/reconcile-payments.ts",
     "postinstall": "prisma generate",
+    "release:preflight": "node ./scripts/check-release-preflight.mjs",
     "test": "vitest run",
     "typecheck": "turbo run typecheck",
     "web:dev": "pnpm --filter @khmercart/web dev"

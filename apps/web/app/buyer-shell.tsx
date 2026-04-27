@@ -1,6 +1,7 @@
 import { appCatalog } from "@khmercart/core";
 import type { ReactNode } from "react";
 import { LocaleSwitch } from "./locale-switch";
+import { BuyerActionDock } from "./buyer-action-dock";
 import { getBuyerDictionary, type BuyerLocale } from "./lib/i18n";
 
 type BuyerShellProps = {
@@ -51,6 +52,8 @@ export function BuyerShell({ children, locale, supportedLocales }: BuyerShellPro
             </div>
           </div>
         </header>
+
+        <BuyerActionDock locale={locale} />
 
         {children}
       </div>

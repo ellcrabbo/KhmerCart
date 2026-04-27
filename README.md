@@ -197,6 +197,11 @@ Behavior:
 - tests prefer `.env.test.local`, then `.env.test`, then `.env`, then `.env.local`
 - Vercel CLI writes pulled project secrets into `.env.local`
 
+Release readiness:
+
+- [`docs/release-readiness.md`](./docs/release-readiness.md) covers the mobile-first web smoke, PayWay sandbox evidence, native mobile smoke, and preflight checklist.
+- Run `pnpm release:preflight` before demos or release builds to verify required env names without printing secret values.
+
 Important variables:
 
 - `DATABASE_URL`

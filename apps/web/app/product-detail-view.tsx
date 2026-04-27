@@ -6,6 +6,11 @@ import { ProductImage } from "./product-image";
 import { formatMoney } from "./lib/format";
 import { getBuyerDictionary, type BuyerLocale } from "./lib/i18n";
 import { useProductDetail } from "./hooks/use-product-detail";
+import {
+  mutateCartItem,
+  toggleFollowedSellerState,
+  toggleSavedProductState
+} from "./lib/buyer-api";
 
 type ProductDetailViewProps = {
   locale: BuyerLocale;
@@ -34,6 +39,9 @@ export function ProductDetailView({ locale, slug }: ProductDetailViewProps) {
   const { data, error, isLoading } = useProductDetail(slug);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isActionLoading, setIsActionLoading] = useState(false);
 
   if (isLoading) {
     return (
@@ -83,6 +91,33 @@ export function ProductDetailView({ locale, slug }: ProductDetailViewProps) {
     data.images[0] ??
     data.featuredImage;
   const selectedAvailableQuantity = selectedVariant?.availableQuantity ?? data.stock.availableQuantity;
+
+  async function runBuyerAction(action: (token: string) => Promise<string>) {
+    const token =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("khmercart.web.sessionToken")
+        : null;
+
+    if (!token) {
+      setActionError("Sign in above before using buyer actions.");
+      return;
+    }
+
+    setIsActionLoading(true);
+    setActionError(null);
+    setActionMessage(null);
+
+    try {
+      const message = await action(token);
+
+      setActionMessage(message);
+      window.dispatchEvent(new Event("khmercart:cart-updated"));
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to complete action.");
+    } finally {
+      setIsActionLoading(false);
+    }
+  }
 
   return (
     <div className="grid gap-6">
@@ -241,6 +276,72 @@ export function ProductDetailView({ locale, slug }: ProductDetailViewProps) {
                 </button>
               ))}
             </div>
+          </article>
+
+          <article className="grid gap-3 rounded-[2rem] border border-black/10 bg-white/82 p-6 shadow-[0_18px_45px_rgba(41,24,8,0.06)]">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.32em] text-stone-500">
+              Mobile web actions
+            </p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <button
+                className="min-h-12 rounded-full bg-[#0f5346] px-5 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={isActionLoading || !selectedVariant || selectedAvailableQuantity <= 0}
+                onClick={() =>
+                  selectedVariant
+                    ? void runBuyerAction(async (token) => {
+                        await mutateCartItem(token, {
+                          action: "ADD",
+                          quantity: 1,
+                          variantId: selectedVariant.id
+                        });
+
+                        return "Added to cart. Open the checkout dock above to continue.";
+                      })
+                    : undefined
+                }
+                type="button"
+              >
+                Add to cart
+              </button>
+              <button
+                className="min-h-12 rounded-full border border-black/10 bg-stone-50 px-5 text-sm font-semibold text-stone-800 disabled:opacity-50"
+                disabled={isActionLoading}
+                onClick={() =>
+                  void runBuyerAction(async (token) => {
+                    const result = await toggleSavedProductState(token, data.id);
+
+                    return result.saved ? "Product saved." : "Product removed from saved list.";
+                  })
+                }
+                type="button"
+              >
+                Save
+              </button>
+              <button
+                className="min-h-12 rounded-full border border-black/10 bg-stone-50 px-5 text-sm font-semibold text-stone-800 disabled:opacity-50"
+                disabled={isActionLoading}
+                onClick={() =>
+                  void runBuyerAction(async (token) => {
+                    const result = await toggleFollowedSellerState(token, data.seller.id);
+
+                    return result.following ? "Seller followed." : "Seller unfollowed.";
+                  })
+                }
+                type="button"
+              >
+                Follow seller
+              </button>
+            </div>
+            {actionMessage ? (
+              <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                {actionMessage}
+              </p>
+            ) : null}
+            {actionError ? (
+              <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                {actionError}
+              </p>
+            ) : null}
           </article>
 
           <article className="rounded-[2rem] border border-black/10 bg-white/82 p-6 shadow-[0_18px_45px_rgba(41,24,8,0.06)]">
