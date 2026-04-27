@@ -72,6 +72,7 @@ web_modules/
 .env.*
 !.env.example
 !.env.test.example
+credential_info.txt
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
