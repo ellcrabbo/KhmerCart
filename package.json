@@ -17,6 +17,8 @@
     "db:reset": "./scripts/with-local-env.sh prisma migrate reset --force && ./scripts/with-local-env.sh prisma generate && pnpm db:seed",
     "db:seed": "./scripts/with-local-env.sh tsx prisma/seed.ts",
     "dev": "turbo run dev",
+    "e2e": "node ./scripts/run-e2e.mjs",
+    "e2e:ui": "playwright test --ui",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "hygiene": "node ./scripts/check-repo-hygiene.mjs",
@@ -36,6 +38,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.59.1",
     "@types/node": "latest",
     "@types/react": "~19.1.10",
     "@types/react-dom": "~19.1.7",

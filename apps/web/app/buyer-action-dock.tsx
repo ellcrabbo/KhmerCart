@@ -22,12 +22,12 @@ import {
   type FollowedSellerEntry,
   type NotificationEntry,
   type PaymentMethod,
-  type SavedProductEntry
+  type SavedProductEntry,
 } from "./lib/buyer-api";
 import type {
   BuyerCart,
   BuyerCheckoutResult,
-  CheckoutPreviewResult
+  CheckoutPreviewResult,
 } from "@khmercart/db";
 
 type BuyerActionDockProps = {
@@ -47,7 +47,7 @@ const defaultAddress: CheckoutAddressInput = {
   line2: "Sangkat Tonle Bassac",
   phone: "+85512345678",
   postalCode: "120101",
-  stateProvince: "Phnom Penh"
+  stateProvince: "Phnom Penh",
 };
 
 function formatStatus(value: string) {
@@ -93,7 +93,9 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
   const [checkoutResult, setCheckoutResult] =
     useState<BuyerCheckoutResult | null>(null);
   const [savedProducts, setSavedProducts] = useState<SavedProductEntry[]>([]);
-  const [followedSellers, setFollowedSellers] = useState<FollowedSellerEntry[]>([]);
+  const [followedSellers, setFollowedSellers] = useState<FollowedSellerEntry[]>(
+    [],
+  );
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -112,38 +114,48 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
     }
 
     return `${checkoutResult.orderNumber} · ${formatStatus(checkoutResult.state)} · ${formatStatus(
-      checkoutResult.payment.status
+      checkoutResult.payment.status,
     )}`;
   }, [checkoutResult]);
 
-  const refreshBuyerData = useCallback(async (token = sessionToken) => {
-    if (!token) {
-      return;
-    }
+  const refreshBuyerData = useCallback(
+    async (token = sessionToken) => {
+      if (!token) {
+        return;
+      }
 
-    const [nextSession, nextCart, checkoutConfig, saved, followed, inbox, summary] =
-      await Promise.all([
+      const [
+        nextSession,
+        nextCart,
+        checkoutConfig,
+        saved,
+        followed,
+        inbox,
+        summary,
+      ] = await Promise.all([
         readBuyerSession(token),
         readCart(token),
         readCheckoutConfig(),
         readSavedProducts(token),
         readFollowedSellers(token),
         readNotifications(token),
-        readNotificationSummary(token)
+        readNotificationSummary(token),
       ]);
 
-    setSession(nextSession);
-    setCart(nextCart);
-    setPaymentMethods(checkoutConfig.paymentMethods);
-    setSavedProducts(saved);
-    setFollowedSellers(followed);
-    setNotifications(inbox);
-    setUnreadCount(summary.unreadCount);
+      setSession(nextSession);
+      setCart(nextCart);
+      setPaymentMethods(checkoutConfig.paymentMethods);
+      setSavedProducts(saved);
+      setFollowedSellers(followed);
+      setNotifications(inbox);
+      setUnreadCount(summary.unreadCount);
 
-    if (!checkoutConfig.paymentMethods.includes(selectedPaymentMethod)) {
-      setSelectedPaymentMethod(checkoutConfig.paymentMethods[0] ?? "COD");
-    }
-  }, [selectedPaymentMethod, sessionToken]);
+      if (!checkoutConfig.paymentMethods.includes(selectedPaymentMethod)) {
+        setSelectedPaymentMethod(checkoutConfig.paymentMethods[0] ?? "COD");
+      }
+    },
+    [selectedPaymentMethod, sessionToken],
+  );
 
   useEffect(() => {
     const token = readStoredToken();
@@ -167,13 +179,16 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
 
     function handleCartUpdated() {
       void refreshBuyerData(sessionToken).catch((error) => {
-        setErrorMessage(error instanceof Error ? error.message : "Unable to refresh cart.");
+        setErrorMessage(
+          error instanceof Error ? error.message : "Unable to refresh cart.",
+        );
       });
     }
 
     window.addEventListener("khmercart:cart-updated", handleCartUpdated);
 
-    return () => window.removeEventListener("khmercart:cart-updated", handleCartUpdated);
+    return () =>
+      window.removeEventListener("khmercart:cart-updated", handleCartUpdated);
   }, [refreshBuyerData, sessionToken]);
 
   useEffect(() => {
@@ -213,10 +228,12 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
       setStatusMessage(
         response.devCode
           ? `Dev OTP ready: ${response.devCode}`
-          : `OTP sent by ${response.channel.toLowerCase()}.`
+          : `OTP sent by ${response.channel.toLowerCase()}.`,
       );
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to request OTP.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to request OTP.",
+      );
     } finally {
       setIsBusy(false);
     }
@@ -237,7 +254,9 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
       setStatusMessage("Signed in. Cart and account data are ready.");
       await refreshBuyerData(response.token);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to verify OTP.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to verify OTP.",
+      );
     } finally {
       setIsBusy(false);
     }
@@ -258,18 +277,20 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
         couponCode: couponCode.trim() || null,
         notes: notes.trim() || null,
         paymentMethod: selectedPaymentMethod,
-        shippingAddress: address
+        shippingAddress: address,
       });
 
       setCheckoutResult(result);
       setStatusMessage(
         result.payment.status === "PENDING"
           ? "Checkout created. Open PayWay to generate or complete the provider QR."
-          : "Checkout created."
+          : "Checkout created.",
       );
       await refreshBuyerData(sessionToken);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to place order.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to place order.",
+      );
     } finally {
       setIsBusy(false);
     }
@@ -300,19 +321,24 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
   function updateAddress(field: keyof CheckoutAddressInput, value: string) {
     setAddress((current) => ({
       ...current,
-      [field]: value
+      [field]: value,
     }));
   }
 
   return (
-    <section className="grid gap-4 rounded-[1.35rem] border border-black/10 bg-white/88 p-4 shadow-[0_18px_45px_rgba(41,24,8,0.07)] sm:p-5">
+    <section
+      aria-label="Mobile checkout"
+      className="grid gap-4 rounded-[1.35rem] border border-black/10 bg-white/88 p-4 shadow-[0_18px_45px_rgba(41,24,8,0.07)] sm:p-5"
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.28em] text-stone-500">
             Mobile checkout
           </p>
           <h2 className="mt-1 text-xl font-semibold tracking-tight text-stone-950">
-            {isSignedIn ? `Ready for ${session?.user.email ?? "buyer"}` : "Sign in to shop"}
+            {isSignedIn
+              ? `Ready for ${session?.user.email ?? "buyer"}`
+              : "Sign in to shop"}
           </h2>
         </div>
         {isSignedIn ? (
@@ -329,6 +355,7 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
       {!isSignedIn ? (
         <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
           <input
+            aria-label="Buyer email or phone"
             className="min-h-12 rounded-2xl border border-black/10 bg-stone-50 px-4 text-sm text-stone-950 outline-none focus:border-emerald-700"
             onChange={(event) => setIdentifier(event.target.value)}
             placeholder="buyer@khmercart.local"
@@ -345,6 +372,7 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
           </button>
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <input
+              aria-label="OTP code"
               className="min-h-12 rounded-2xl border border-black/10 bg-stone-50 px-4 text-sm text-stone-950 outline-none focus:border-emerald-700"
               onChange={(event) => setCode(event.target.value)}
               placeholder={devCode ?? "Code"}
@@ -369,13 +397,17 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
                 key={tab}
                 className={[
                   "min-h-10 rounded-full text-sm font-semibold capitalize transition",
-                  activeTab === tab ? "bg-white text-stone-950 shadow-sm" : "text-stone-600"
+                  activeTab === tab
+                    ? "bg-white text-stone-950 shadow-sm"
+                    : "text-stone-600",
                 ].join(" ")}
                 onClick={() => setActiveTab(tab)}
                 type="button"
               >
                 {tab}
-                {tab === "cart" && cart?.itemCount ? ` (${cart.itemCount})` : ""}
+                {tab === "cart" && cart?.itemCount
+                  ? ` (${cart.itemCount})`
+                  : ""}
                 {tab === "account" && unreadCount ? ` (${unreadCount})` : ""}
               </button>
             ))}
@@ -400,12 +432,17 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
                       </div>
                       <p className="text-right text-sm font-semibold text-stone-950">
                         {item.lineSubtotalMinor !== null && item.currency
-                          ? formatMoney(locale, item.currency, item.lineSubtotalMinor)
+                          ? formatMoney(
+                              locale,
+                              item.currency,
+                              item.lineSubtotalMinor,
+                            )
                           : "-"}
                       </p>
                     </div>
                     <p className="text-xs uppercase tracking-[0.22em] text-stone-500">
-                      Quantity {item.quantity} · {item.availableQuantity} available
+                      Quantity {item.quantity} · {item.availableQuantity}{" "}
+                      available
                     </p>
                   </div>
                 ))
@@ -428,33 +465,48 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
             <div className="grid gap-3">
               <div className="grid gap-2 sm:grid-cols-2">
                 <input
+                  aria-label="Full name"
                   className="min-h-11 rounded-2xl border border-black/10 bg-stone-50 px-4 text-sm"
-                  onChange={(event) => updateAddress("fullName", event.target.value)}
+                  onChange={(event) =>
+                    updateAddress("fullName", event.target.value)
+                  }
                   placeholder="Full name"
                   value={address.fullName ?? ""}
                 />
                 <input
+                  aria-label="Phone"
                   className="min-h-11 rounded-2xl border border-black/10 bg-stone-50 px-4 text-sm"
-                  onChange={(event) => updateAddress("phone", event.target.value)}
+                  onChange={(event) =>
+                    updateAddress("phone", event.target.value)
+                  }
                   placeholder="Phone"
                   value={address.phone ?? ""}
                 />
                 <input
+                  aria-label="Address"
                   className="min-h-11 rounded-2xl border border-black/10 bg-stone-50 px-4 text-sm sm:col-span-2"
-                  onChange={(event) => updateAddress("line1", event.target.value)}
+                  onChange={(event) =>
+                    updateAddress("line1", event.target.value)
+                  }
                   placeholder="Address"
                   value={address.line1 ?? ""}
                 />
                 <input
+                  aria-label="City"
                   className="min-h-11 rounded-2xl border border-black/10 bg-stone-50 px-4 text-sm"
-                  onChange={(event) => updateAddress("city", event.target.value)}
+                  onChange={(event) =>
+                    updateAddress("city", event.target.value)
+                  }
                   placeholder="City"
                   value={address.city ?? ""}
                 />
                 <select
+                  aria-label="Payment method"
                   className="min-h-11 rounded-2xl border border-black/10 bg-stone-50 px-4 text-sm"
                   onChange={(event) =>
-                    setSelectedPaymentMethod(event.target.value as PaymentMethod)
+                    setSelectedPaymentMethod(
+                      event.target.value as PaymentMethod,
+                    )
                   }
                   value={selectedPaymentMethod}
                 >
@@ -468,12 +520,14 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
 
               <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
                 <input
+                  aria-label="Coupon"
                   className="min-h-11 rounded-2xl border border-black/10 bg-stone-50 px-4 text-sm"
                   onChange={(event) => setCouponCode(event.target.value)}
                   placeholder="Coupon"
                   value={couponCode}
                 />
                 <input
+                  aria-label="Delivery notes"
                   className="min-h-11 rounded-2xl border border-black/10 bg-stone-50 px-4 text-sm"
                   onChange={(event) => setNotes(event.target.value)}
                   placeholder="Delivery notes"
@@ -492,11 +546,19 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
               <div className="grid gap-2 rounded-[1.1rem] border border-black/8 bg-stone-50/85 p-4 text-sm text-stone-700">
                 <div className="flex justify-between">
                   <span>Items</span>
-                  <span>{checkoutPreview?.itemCount ?? cart?.itemCount ?? 0}</span>
+                  <span>
+                    {checkoutPreview?.itemCount ?? cart?.itemCount ?? 0}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Shipping</span>
-                  <span>{formatMoney(locale, cartCurrency, checkoutPreview?.shippingMinor ?? 0)}</span>
+                  <span>
+                    {formatMoney(
+                      locale,
+                      cartCurrency,
+                      checkoutPreview?.shippingMinor ?? 0,
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between font-semibold text-stone-950">
                   <span>Total</span>
@@ -504,7 +566,7 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
                     {formatMoney(
                       locale,
                       cartCurrency,
-                      checkoutPreview?.totalMinor ?? cart?.totalMinor ?? 0
+                      checkoutPreview?.totalMinor ?? cart?.totalMinor ?? 0,
                     )}
                   </span>
                 </div>
@@ -521,8 +583,9 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
                 ) : null}
                 {checkoutResult?.payment.provider === "PAYWAY" ? (
                   <p className="text-xs leading-5 text-amber-800">
-                    PayWay QR generation is not payment confirmation. The order stays pending
-                    until ABA sends a callback or reconciliation confirms payment.
+                    PayWay QR generation is not payment confirmation. The order
+                    stays pending until ABA sends a callback or reconciliation
+                    confirms payment.
                   </p>
                 ) : null}
               </div>
@@ -550,17 +613,23 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
                     <button
                       key={notification.id}
                       className="rounded-xl bg-white px-3 py-2 text-left text-sm text-stone-700"
-                      onClick={() => void handleMarkNotification(notification.id)}
+                      onClick={() =>
+                        void handleMarkNotification(notification.id)
+                      }
                       type="button"
                     >
                       <span className="block font-semibold text-stone-950">
                         {notification.title}
                       </span>
-                      <span className="mt-1 block text-xs leading-5">{notification.body}</span>
+                      <span className="mt-1 block text-xs leading-5">
+                        {notification.body}
+                      </span>
                     </button>
                   ))
                 ) : (
-                  <p className="text-sm text-stone-600">No notifications yet.</p>
+                  <p className="text-sm text-stone-600">
+                    No notifications yet.
+                  </p>
                 )}
               </div>
             </div>
@@ -585,7 +654,7 @@ export function BuyerActionDock({ locale }: BuyerActionDockProps) {
 function AccountList({
   empty,
   items,
-  title
+  title,
 }: {
   empty: string;
   items: string[];
@@ -598,7 +667,10 @@ function AccountList({
       </p>
       {items.length ? (
         items.slice(0, 4).map((item) => (
-          <p key={item} className="rounded-xl bg-white px-3 py-2 text-sm text-stone-700">
+          <p
+            key={item}
+            className="rounded-xl bg-white px-3 py-2 text-sm text-stone-700"
+          >
             {item}
           </p>
         ))

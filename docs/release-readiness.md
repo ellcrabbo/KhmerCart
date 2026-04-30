@@ -49,8 +49,16 @@ Run this before demos or release builds:
 
 ```bash
 pnpm release:preflight
+pnpm e2e
 pnpm vitest run tests/payway-provider.test.ts tests/payment-webhooks.test.ts --testTimeout=20000
 pnpm typecheck
 ```
 
 The preflight script reports missing env names only. It does not print secret values.
+The local `pnpm e2e` command ensures the minimal demo fixture first so the checkout smoke starts from a known catalog and buyer account.
+
+For deployed smoke runs, point the same Playwright suite at the public web URL:
+
+```bash
+PLAYWRIGHT_BASE_URL=https://<web-demo-domain> pnpm e2e
+```
